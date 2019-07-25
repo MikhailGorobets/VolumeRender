@@ -1,33 +1,9 @@
+#include "Common.hlsl"
+
+
 Texture2D<float4>   TextureHDR : register(t0);
 RWTexture2D<float4> TextureLDR : register(u0);
 
-cbuffer ConstantFrameBuffer : register(b0)
-{
-    struct
-    {
-        float4x4 CameraView;
-        float4x4 BoundingBoxRotation;
-
-        float CameraFocalLenght;
-        float3 CameraOrigin;
-       
-        float CameraAspectRatio;
-        uint FrameIndex;
-        uint TraceDepth;
-        uint StepCount;
-
-        float Density;
-        float3 BoundingBoxMin;
-
-        float Exposure;
-        float3 BoundingBoxMax;
-       
-        float4 GradientDelta;
-        float  IsEnableEnviroment;
-        float  Gamma;
-        float2 FrameOffset;
-    } FrameBuffer;
-}
 
 
 float3 Uncharted2Function(float A, float B, float C, float D, float E, float F, float3 x) {

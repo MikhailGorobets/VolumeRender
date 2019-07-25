@@ -1,0 +1,51 @@
+{
+  "Nodes": [
+    {
+      "Intensity": 0.0,
+      "Opacity": 0.0,
+      "Diffuse": [ 160, 160, 164 ],
+      "Specular": [ 10, 10, 10 ],
+      "Roughness": 1.0
+    },
+    {
+      "Intensity": 0.23597,
+      "Opacity": 0.001,
+      "Diffuse": [ 45, 0, 0 ],
+      "Specular": [ 250, 170, 127 ],
+      "Roughness": 0.01
+    },
+
+    {
+      "Intensity": 0.288538,
+      "Opacity": 0.0179028,
+      "Diffuse": [ 44, 7, 7 ],
+      "Specular": [ 50, 50, 50 ],
+      "Roughness": 0.5868
+    },
+
+    {
+      "Intensity": 0.288578,
+      "Opacity": 0.563502,
+      "Diffuse": [ 67, 0, 0 ],
+      "Specular": [ 11, 7, 5 ],
+      "Roughness": 0.0744
+    },
+
+    {
+      "Intensity": 0.35417,
+      "Opacity": 1.0,
+      "Diffuse": [ 86, 72, 41 ],
+      "Specular": [ 4, 2, 2 ],
+      "Roughness": 0.1322
+    },
+
+    {
+      "Intensity": 1.0,
+      "Opacity": 1.0,
+      "Diffuse": [ 160, 160, 164 ],
+      "Specular": [ 10, 10, 10 ],
+      "Roughness": 1.0
+    }
+  ]
+
+}

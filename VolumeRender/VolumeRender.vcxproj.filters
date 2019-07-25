@@ -101,5 +101,8 @@
     <ClInclude Include="3rdParty\DirectXTex\DDSTextureLoader.h">
       <Filter>Файлы заголовков\DirectXTex</Filter>
     </ClInclude>
+    <ClInclude Include="Cube.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

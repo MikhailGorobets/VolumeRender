@@ -153,6 +153,7 @@
     <ClInclude Include="Application.h" />
     <ClInclude Include="ApplicationVolumeRender.h" />
     <ClInclude Include="Common.h" />
+    <ClInclude Include="Cube.h" />
     <ClInclude Include="TransferFunction.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

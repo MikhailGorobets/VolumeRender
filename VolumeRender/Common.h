@@ -25,6 +25,8 @@
 
 #include <DirectXTex/DDSTextureLoader.h>
 
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
 
 #include <Hawk/Math/Functions.hpp>
 #include <Hawk/Math/Transform.hpp>

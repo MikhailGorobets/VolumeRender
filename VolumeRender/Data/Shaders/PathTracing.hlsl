@@ -1,4 +1,5 @@
 
+#include "Common.hlsl"
 
 static const float M_PI = 3.14159265f;
 static const float M_EPSILON = 1.0e-3f;
@@ -26,9 +27,9 @@ struct ScatterEvent {
     float3 Position;
     float3 Normal;
     float3 View;
-    float3 Albedo;
+    float3 Diffuse;
     float3 Specular;
-    float  Rougness;
+    float  Roughness;
     float  Alpha;
     float  GradMag;
     float  Opacity;
@@ -47,11 +48,12 @@ struct CRNG {
 struct VolumeDesc {
     Texture3D<float1> TextureVolumeIntensity;
     Texture3D<float4> TextureVolumeGradient;
-    Texture1D<float3> TextureAlbedo;
-    Texture1D<float1> TextureMetallic;
+    Texture1D<float3> TextureDiffuse;
+    Texture1D<float3> TextureSpecular;
     Texture1D<float1> TextureRoughness;
     Texture1D<float1> TextureOpacity;
     AABB              BoundingBox;
+    AABB              BoundingBoxCrop;
     float3x3          Rotation;
     float             StepSize;
     float             DensityScale;
@@ -60,49 +62,33 @@ struct VolumeDesc {
 
 
 
-Texture3D<float1> TextureVolumeIntensity           : register(t0);
-Texture3D<float4> TextureVolumeGradient            : register(t1);
-Texture1D<float3> TextureTransferFunctionAlbedo    : register(t2);
-Texture1D<float1> TextureTransferFunctionMetallic  : register(t3);
-Texture1D<float1> TextureTransferFunctionRoughness : register(t4);
-Texture1D<float1> TextureTransferFunctionOpacity   : register(t5);
-Texture2D<float3> TextureEnviroment                : register(t6);
+Texture3D<float1> TextureVolumeIntensity            : register(t0);
+Texture3D<float4> TextureVolumeGradient             : register(t1);
+Texture1D<float3> TextureTransferFunctionDiffuse    : register(t2);
+Texture1D<float3> TextureTransferFunctionSpecular   : register(t3);
+Texture1D<float1> TextureTransferFunctionRoughness  : register(t4);
+Texture1D<float1> TextureTransferFunctionOpacity    : register(t5);
+Texture2D<float3> TextureEnviroment                 : register(t6);
 
-RWTexture2D<float4> TextureFrameUAV : register(u0);
-Texture2D<float4>   TextureFrameSRV : register(t0);
-RWTexture2D<float4> TextureSumUAV   : register(u0);
+RWTexture2D<float4> TexturePositionUAV : register(u0);
+RWTexture2D<float4> TextureNormalUAV   : register(u1);
+RWTexture2D<float4> TextureColorUAV    : register(u2);
+
+
+
+Texture2D<float4>   TexturePositionSRV   : register(t0);
+Texture2D<float4>   TextureNormalSRV     : register(t1);
+Texture2D<float4>   TextureColorSRV      : register(t2);
+
+RWTexture2D<float4> TexturePositionSumUAV : register(u0);
+RWTexture2D<float4> TextureNormalSumUAV   : register(u1);
+RWTexture2D<float4> TextureColorSumUAV    : register(u2);
 
 SamplerState SamplerPoint       : register(s0);
 SamplerState SamplerLinear      : register(s1);
 SamplerState SamplerAnisotropic : register(s2);
 
-cbuffer ConstantFrameBuffer : register(b0) {
-    struct {
-        float4x4 CameraView;
-        float4x4 BoundingBoxRotation;
 
-        float    CameraFocalLenght;
-        float3   CameraOrigin;
-       
-        float    CameraAspectRatio;
-        uint     FrameIndex;
-        uint     TraceDepth;
-        uint     StepCount;
-
-        float    Density;
-        float3   BoundingBoxMin;
-
-        float    Exposure;
-        float3   BoundingBoxMax;
-       
-        float3   GradientDelta;
-        float    GradFactor;
-
-        float    IsEnableEnviroment;
-        float    Gamma;
-        float2   FrameOffset;
-    } FrameBuffer;
-}
 
 uint Hash(uint seed) {
     seed = (seed ^ 61) ^ (seed >> 16);
@@ -139,26 +125,34 @@ CRNG InitCRND(uint2 id, uint frameIndex) {
     return rng;
 }
 
-Ray CreateCameraRayPerspective(uint2 id, CRNG rng) {
 
+Ray CreateCameraRay(uint2 id, CRNG rng)
+{
     float2 dimension;
-    TextureFrameUAV.GetDimensions(dimension.x, dimension.y);
+    TextureColorUAV.GetDimensions(dimension.x, dimension.y);
 
-    float3 direction;
-    direction.xy = 2.0f * (id.xy + FrameBuffer.FrameOffset) / dimension - 1.0f;
-    direction.x *= FrameBuffer.CameraAspectRatio;
-    direction.y = -direction.y;
-    direction.z = -FrameBuffer.CameraFocalLenght;
-    direction = mul((float3x3) FrameBuffer.CameraView, normalize(direction));
-   
+    float2 ncdXY = 2.0f * (id.xy + FrameBuffer.FrameOffset) / dimension - 1.0f;
+    ncdXY.y *= -1.0f;
+
+    float4 rayStart = mul(FrameBuffer.InvViewProjection, float4(ncdXY, 0.0f, 1.0f));
+    float4 rayEnd   = mul(FrameBuffer.InvViewProjection, float4(ncdXY, 1.0f, 1.0f));
+
+    rayStart.xyz /= rayStart.w;
+    rayEnd.xyz   /= rayEnd.w;
+
+
     Ray ray;
-    ray.Direction = direction;
-    ray.Origin = FrameBuffer.CameraOrigin;
+    ray.Direction = normalize(rayEnd.xyz - rayStart.xyz);
+    ray.Origin = rayStart;
     ray.Min = 0;
-    ray.Max = FLT_MAX;
+    ray.Max = length(rayEnd.xyz - rayStart.xyz);;
 
     return ray;
+
+
 }
+
+
 
 Intersection IntersectAABB(Ray ray, AABB aabb) {
 
@@ -203,7 +197,7 @@ Intersection IntersectAABB(Ray ray, AABB aabb) {
 }
 
 float3x3 GetTangentSpace(float3 normal) {  
-    const float3 helper = abs(normal.z) < 0.999 ? float3(0, 0, 1) : float3(1, 0, 0);
+    const float3 helper = abs(normal.x) > 0.999 ? float3(0, 0, 1) : float3(1, 0, 0);
     const float3 tangent = normalize(cross(normal, helper));
     const float3 binormal = normalize(cross(normal, tangent));
     return float3x3(tangent, binormal, normal);
@@ -241,6 +235,17 @@ float3 GGX_SampleHemisphere(float3 normal, float alpha, inout CRNG rng) {
 }
 
 
+float3 UniformSampleHemisphere(float3 normal, inout CRNG rng){
+
+    float2 e = float2(Rand(rng), Rand(rng));
+
+    float phi = 2.0 * M_PI * e.x;
+    float cosTheta = e.y;
+    float sinTheta = sqrt(max(0.0f, 1.0 - cosTheta * cosTheta));
+    return mul(float3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta), GetTangentSpace(normal));
+}
+
+
 
 float3 UniformSampleSphere(inout CRNG rng) {
     float theta = 2.0 * M_PI * Rand(rng);
@@ -250,9 +255,6 @@ float3 UniformSampleSphere(inout CRNG rng) {
 
 
 float3 GetNormalizedTexcoord(float3 position, AABB aabb) {
-    float3 tmin = float3(aabb.Min.x, aabb.Max.y, aabb.Min.z);
-    float3 tmax = float3(aabb.Max.x, aabb.Min.y, aabb.Max.z);
-  //  return (position - tmin) / (tmax - tmin);
     return (position - aabb.Min) / (aabb.Max - aabb.Min);
 }
 
@@ -273,15 +275,16 @@ float GetOpacity(VolumeDesc desc, float3 position) {
     return desc.TextureOpacity.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
 }
 
-float3 GetAlbedo(VolumeDesc desc, float3 position) {
-    return desc.TextureAlbedo.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
+float3 GetDiffuse(VolumeDesc desc, float3 position) {
+    return desc.TextureDiffuse.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
 }
 
-float3 GetMetallic(VolumeDesc desc, float3 position) {
-    return desc.TextureMetallic.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
+float3 GetSpecular(VolumeDesc desc, float3 position) {
+    return desc.TextureSpecular.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
 }
 
-float GetRoughness(VolumeDesc desc, float3 position) {
+float GetRoughness(VolumeDesc desc, float3 position)
+{
     return desc.TextureRoughness.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
 }
 
@@ -292,7 +295,12 @@ float3 GetEnviroment(float3 direction) {
    
 }
 
-
+float3 refract(float3 i, float3 n, float eta)
+{
+    eta = 2.0f - eta;
+    float cosi = dot(n, i); 
+    return (i * eta - n * (-cosi + eta * cosi));
+}
 
 ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
 
@@ -301,16 +309,16 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
     event.Normal = 0.0f;
     event.Position = 0.0f;
     event.View = 0.0f;
-    event.Albedo = 0.0f;
+    event.Diffuse = 0.0f;
     event.Specular = 0.0f;
-    event.Rougness = 0.0f;
+    event.Roughness = 0.0f;
     event.Alpha = 0.0f;
     event.Opacity = 0.0f;
     event.GradMag = 0.0f;
     
     Ray transformRay = { mul(desc.Rotation, ray.Origin), mul(desc.Rotation, ray.Direction), 0.0, FLT_MAX };
  
-    Intersection intersect = IntersectAABB(transformRay, desc.BoundingBox);
+    Intersection intersect = IntersectAABB(transformRay, desc.BoundingBoxCrop);
   
     if (!intersect.IsValid)
         return event;
@@ -333,8 +341,8 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
         t += desc.StepSize;
     }
 
-    float3 albedo = GetAlbedo(desc, position);
-    float3 metallic = GetMetallic(desc, position);
+    float3 diffuse = GetDiffuse(desc, position);
+    float3 specular = GetSpecular(desc, position);
     float3 roughness = GetRoughness(desc, position);
     float3 gradient = GetGradient(desc, position);
 
@@ -342,10 +350,10 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
     event.Normal = mul(-normalize(gradient), desc.Rotation);
     event.Position = mul(position, desc.Rotation);
     event.View = -ray.Direction;
-    event.Albedo = albedo * (1 - metallic);
-    event.Specular = lerp(0.04, albedo, metallic);
-    event.Rougness = roughness;
-    event.Alpha = event.Rougness * event.Rougness;
+    event.Diffuse = diffuse;
+    event.Specular = 0.04;
+    event.Roughness = roughness;
+    event.Alpha = event.Roughness * event.Roughness;
     event.GradMag = length(gradient);
     event.Opacity = GetOpacity(desc, position);
 
@@ -357,24 +365,30 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
 [numthreads(8, 8, 1)]
 void FirstPass(uint3 id : SV_DispatchThreadID) {
     
-    float3 color  = { 0, 0, 0 };
-    float3 energy = { 1, 1, 1 };
+   
    
     CRNG rng = InitCRND(id.xy, FrameBuffer.FrameIndex);
-    Ray  ray = CreateCameraRayPerspective(id.xy, rng);
+    Ray ray = CreateCameraRay(id.xy, rng);
  
+    float3 color = { 0, 0, 0 };
+    float3 normal = { 0, 0, 0 };
+    float3 position = { 0.0, 0.0, 0.0 };
+    float3 energy = { 1, 1, 1 };
+
 
     VolumeDesc desc;
-    desc.BoundingBox.Min = FrameBuffer.BoundingBoxMin;
-    desc.BoundingBox.Max = FrameBuffer.BoundingBoxMax;
+    desc.BoundingBox.Min = float3(-FrameBuffer.BoundingBoxSize, -FrameBuffer.BoundingBoxSize, -FrameBuffer.BoundingBoxSize);
+    desc.BoundingBox.Max = float3(+FrameBuffer.BoundingBoxSize, +FrameBuffer.BoundingBoxSize, +FrameBuffer.BoundingBoxSize);
+    desc.BoundingBoxCrop.Min = FrameBuffer.BoundingBoxMin;
+    desc.BoundingBoxCrop.Max = FrameBuffer.BoundingBoxMax;
     desc.StepSize = distance(desc.BoundingBox.Min, desc.BoundingBox.Max) / FrameBuffer.StepCount;
     desc.DensityScale = FrameBuffer.Density;
     desc.Rotation = FrameBuffer.BoundingBoxRotation;
     desc.GradientDelta = (FrameBuffer.BoundingBoxMax - FrameBuffer.BoundingBoxMin) * FrameBuffer.GradientDelta.xyz;
     desc.TextureVolumeIntensity = TextureVolumeIntensity;
     desc.TextureVolumeGradient  = TextureVolumeGradient;
-    desc.TextureAlbedo = TextureTransferFunctionAlbedo;
-    desc.TextureMetallic = TextureTransferFunctionMetallic;
+    desc.TextureDiffuse = TextureTransferFunctionDiffuse;
+    desc.TextureSpecular = TextureTransferFunctionSpecular;
     desc.TextureRoughness = TextureTransferFunctionRoughness;
     desc.TextureOpacity = TextureTransferFunctionOpacity;
     
@@ -387,54 +401,86 @@ void FirstPass(uint3 id : SV_DispatchThreadID) {
          ScatterEvent event = RayMarching(ray, desc, rng);
        
          if (!event.IsValid) {
-            color += (depth == 0 && FrameBuffer.IsEnableEnviroment <= 0.0) ? 0.0f : energy * GetEnviroment(ray.Direction);
+            color += (depth == 0 && FrameBuffer.IsEnableEnviroment <= 0.0) ? 0.0 : energy * GetEnviroment(ray.Direction);
+            color *= (depth != 0) ? FrameBuffer.IBLScale : 1.0f;
             break;
          }
-       
+
+      
+        if (depth == 0 && event.IsValid) {
+            position = event.Position;
+            normal   = event.Normal;
+        }
         
-         const float3 N = event.Normal;
-         const float3 V = event.View;
-         const float3 H = GGX_SampleHemisphere(event.Normal, event.Alpha, rng);
-         const float3 F = FresnelSchlick(event.Specular, saturate(dot(V, N)));
-         
-        // const float pd = length(1 - F);
-        // const float ps = length(F);
-        // 
-        // const float pdf = ps / (ps + pd);
-        // 
-        // if (Rand(rng) < pdf) {
-        // 
-        //     const float3 L = reflect(-V, H);
-        //     const float NdotL = saturate(dot(N, L));
-        //     const float NdotV = saturate(dot(N, V));
-        //     const float NdotH = saturate(dot(N, H));
-        //     const float VdotH = saturate(dot(V, H));
-        //             
-        //     const float G = GGX_PartialGeometry(NdotV, event.Alpha) * GGX_PartialGeometry(NdotL, event.Alpha);
-        //      
-        //     ray.Origin = event.Position;
-        //     ray.Direction = L;
-        //     energy *= (G * F * VdotH) / (NdotV * NdotH + FLT_EPSILON) / (pdf);
-        // 
-        // } else {
-        //          
-        //     const float3 L = GGX_SampleHemisphere(N, 1.0, rng);
-        //     const float NdotL = saturate(dot(N, L));
-        // 
-        //     ray.Origin = event.Position;
-        //     ray.Direction = L;
-        //     energy *= 2.0 * M_PI * saturate((1 - F)) * event.Albedo * NdotL /(1 - pdf);
-        // }
-        //
+
+       
+       
+          
+      //  const float3 N = event.Normal;
+      //  const float3 V = event.View;
+      //  const float3 L = GGX_SampleHemisphere(event.Normal, 1.0, rng);
+      // 
+      //         
+      // 
+      //  const float NdotL = saturate(dot(N, L));
+      // 
+      //  ray.Origin = event.Position;
+      //  ray.Direction = L;
+      //  energy *= 2.0 * event.Diffuse * NdotL;
+
+       
+        const float3 N = event.Normal;
+        const float3 V = event.View;
+        const float3 H = GGX_SampleHemisphere(event.Normal, event.Alpha, rng);
+        const float3 F = FresnelSchlick(event.Specular, saturate(dot(V, N)));
+        
+        
+        
+       
+        const float pd = length(1 - F);
+        const float ps = length(F);
+        
+        const float pdf = ps / (ps + pd);
+        
+        if (Rand(rng) < pdf) {
+        
+            const float3 L = reflect(-V, H);
+            const float NdotL = saturate(dot(N, L));
+            const float NdotV = saturate(dot(N, V));
+            const float NdotH = saturate(dot(N, H));
+            const float VdotH = saturate(dot(V, H));
+                    
+            const float G = GGX_PartialGeometry(NdotV, event.Alpha) * GGX_PartialGeometry(NdotL, event.Alpha);
+             
+            ray.Origin = event.Position;
+            ray.Direction = L;
+            energy *= (G * F * VdotH) / (NdotV * NdotH + FLT_EPSILON) / (pdf);
+        
+        } else {
+                 
+            const float3 L = GGX_SampleHemisphere(N, 1.0, rng);
+            const float NdotL = saturate(dot(N, L));
+        
+            ray.Origin = event.Position;
+            ray.Direction = L;
+            energy *= 2.0 * saturate((1 - F)) * event.Diffuse * NdotL /(1 - pdf);
+        }
+
               
-        energy *= F;
     }
-   TextureFrameUAV[id.xy] = float4(color, 1.0);
+    TextureColorUAV[id.xy] = float4(color, 1.0);
+    TexturePositionUAV[id.xy] = float4(position, 1.0);
+    TextureNormalUAV[id.xy] = float4(normal, 1.0f);
+
    
 }
 
 [numthreads(8, 8, 1)]
 void SecondPass(uint3 id : SV_DispatchThreadID) {
-    TextureSumUAV[id.xy] = float4((TextureSumUAV[id.xy].xyz * FrameBuffer.FrameIndex + TextureFrameSRV[id.xy].xyz) / (FrameBuffer.FrameIndex + 1), 1.0);
+
+    TexturePositionSumUAV[id.xy] = float4((TexturePositionSumUAV[id.xy].xyz * FrameBuffer.FrameIndex + TexturePositionSRV[id.xy].xyz) / (FrameBuffer.FrameIndex + 1), 1.0);
+    TextureNormalSumUAV[id.xy]   = float4((TextureNormalSumUAV[id.xy].xyz * FrameBuffer.FrameIndex + TextureNormalSRV[id.xy].xyz) / (FrameBuffer.FrameIndex + 1), 1.0);
+    TextureColorSumUAV[id.xy]    = float4((TextureColorSumUAV[id.xy].xyz * FrameBuffer.FrameIndex + TextureColorSRV[id.xy].xyz) / (FrameBuffer.FrameIndex + 1), 1.0);
+    
    
 }
