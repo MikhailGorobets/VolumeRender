@@ -67,7 +67,6 @@ public:
 	}
 
 	auto GenerateTexture(Microsoft::WRL::ComPtr<ID3D11Device> pDevice, uint32_t sampling = 64) -> Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> {
-
 	
 
 		std::vector<F32> data(sampling);

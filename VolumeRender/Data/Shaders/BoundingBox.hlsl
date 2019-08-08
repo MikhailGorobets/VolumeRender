@@ -10,7 +10,9 @@ struct InputVS {
 void VS_Main(InputVS input,  out float4 position : SV_Position)
 {
     position = float4(input.Position * abs(FrameBuffer.BoundingBoxMin), 1.0f);
-    position = mul(position, FrameBuffer.BoundingBoxRotation);
+    position = mul(FrameBuffer.WorldMatrix, position);
+    position = mul(FrameBuffer.ViewProjection, position);
+   
   //  position = mul(position, FrameBuffer.CameraView);
   //  position = mul(position, FrameBuffer.CameraProj);
     

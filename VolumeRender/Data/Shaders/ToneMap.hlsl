@@ -29,7 +29,7 @@ float3 ToneMapUncharted2Function(float3 x, float exposure) {
 
 float3 LinearToSRGB(float3 color) {
     float3 sRGBLo = color * 12.92;
-    const float powExp = 1.0 / FrameBuffer.Gamma;
+    const float powExp = 1.0 / 2.2;
     float3 sRGBHi = (pow(abs(color), float3(powExp, powExp, powExp)) * 1.055) - 0.055;
     float3 sRGB;
     sRGB.x = (color.x <= 0.0031308) ? sRGBLo.x : sRGBHi.x;

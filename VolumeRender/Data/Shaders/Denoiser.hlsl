@@ -4,8 +4,8 @@
 
 
 Texture2D<float4> TexturePosition  : register(t0);
-Texture2D<float4> TextureNormal   : register(t1);
-Texture2D<float4> TextureColor    : register(t2);
+Texture2D<float4> TextureNormal    : register(t1);
+Texture2D<float4> TextureColor     : register(t2);
 
 
 

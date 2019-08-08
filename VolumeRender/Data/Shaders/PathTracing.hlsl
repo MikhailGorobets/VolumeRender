@@ -46,12 +46,6 @@ struct CRNG {
 };
 
 struct VolumeDesc {
-    Texture3D<float1> TextureVolumeIntensity;
-    Texture3D<float4> TextureVolumeGradient;
-    Texture1D<float3> TextureDiffuse;
-    Texture1D<float3> TextureSpecular;
-    Texture1D<float1> TextureRoughness;
-    Texture1D<float1> TextureOpacity;
     AABB              BoundingBox;
     AABB              BoundingBoxCrop;
     float3x3          Rotation;
@@ -140,7 +134,6 @@ Ray CreateCameraRay(uint2 id, CRNG rng)
     rayStart.xyz /= rayStart.w;
     rayEnd.xyz   /= rayEnd.w;
 
-
     Ray ray;
     ray.Direction = normalize(rayEnd.xyz - rayStart.xyz);
     ray.Origin = rayStart;
@@ -148,8 +141,6 @@ Ray CreateCameraRay(uint2 id, CRNG rng)
     ray.Max = length(rayEnd.xyz - rayStart.xyz);;
 
     return ray;
-
-
 }
 
 
@@ -225,9 +216,7 @@ float GGX_Distribution(float NdotH, float alpha) {
 }
 
 float3 GGX_SampleHemisphere(float3 normal, float alpha, inout CRNG rng) {
-
     float2 e = float2(Rand(rng), Rand(rng));
-
     float phi = 2.0 * M_PI * e.x;
     float cosTheta = sqrt((1.0 - e.y) / (1.0 + alpha * alpha * e.y - e.y));
     float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
@@ -236,9 +225,7 @@ float3 GGX_SampleHemisphere(float3 normal, float alpha, inout CRNG rng) {
 
 
 float3 UniformSampleHemisphere(float3 normal, inout CRNG rng){
-
     float2 e = float2(Rand(rng), Rand(rng));
-
     float phi = 2.0 * M_PI * e.x;
     float cosTheta = e.y;
     float sinTheta = sqrt(max(0.0f, 1.0 - cosTheta * cosTheta));
@@ -259,33 +246,30 @@ float3 GetNormalizedTexcoord(float3 position, AABB aabb) {
 }
 
  
-
-
 float GetIntensity(VolumeDesc desc, float3 position) {
-    return desc.TextureVolumeIntensity.SampleLevel(SamplerLinear, GetNormalizedTexcoord(position, desc.BoundingBox), 0);
+    return TextureVolumeIntensity.SampleLevel(SamplerLinear, GetNormalizedTexcoord(position, desc.BoundingBox), 0);
 }
 
 
 float3 GetGradient(VolumeDesc desc, float3 position) {
-    return desc.TextureVolumeGradient.SampleLevel(SamplerLinear, GetNormalizedTexcoord(position, desc.BoundingBox), 0).xyz;
+    return TextureVolumeGradient.SampleLevel(SamplerLinear, GetNormalizedTexcoord(position, desc.BoundingBox), 0).xyz;
 }
 
 
 float GetOpacity(VolumeDesc desc, float3 position) {
-    return desc.TextureOpacity.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
+    return TextureTransferFunctionOpacity.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
 }
 
 float3 GetDiffuse(VolumeDesc desc, float3 position) {
-    return desc.TextureDiffuse.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
+    return TextureTransferFunctionDiffuse.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
 }
 
 float3 GetSpecular(VolumeDesc desc, float3 position) {
-    return desc.TextureSpecular.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
+    return TextureTransferFunctionSpecular.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
 }
 
-float GetRoughness(VolumeDesc desc, float3 position)
-{
-    return desc.TextureRoughness.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
+float GetRoughness(VolumeDesc desc, float3 position) {
+    return TextureTransferFunctionRoughness.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
 }
 
 float3 GetEnviroment(float3 direction) {
@@ -295,8 +279,7 @@ float3 GetEnviroment(float3 direction) {
    
 }
 
-float3 refract(float3 i, float3 n, float eta)
-{
+float3 refract(float3 i, float3 n, float eta) {
     eta = 2.0f - eta;
     float cosi = dot(n, i); 
     return (i * eta - n * (-cosi + eta * cosi));
@@ -316,7 +299,7 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
     event.Opacity = 0.0f;
     event.GradMag = 0.0f;
     
-    Ray transformRay = { mul(desc.Rotation, ray.Origin), mul(desc.Rotation, ray.Direction), 0.0, FLT_MAX };
+    Ray transformRay = { mul(FrameBuffer.InvWorldMatrix, float4(ray.Origin, 1.0)).xyz, mul((float3x3)FrameBuffer.InvNormalMatrix, ray.Direction), 0.0, FLT_MAX};
  
     Intersection intersect = IntersectAABB(transformRay, desc.BoundingBoxCrop);
   
@@ -347,8 +330,8 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
     float3 gradient = GetGradient(desc, position);
 
     event.IsValid = true;
-    event.Normal = mul(-normalize(gradient), desc.Rotation);
-    event.Position = mul(position, desc.Rotation);
+    event.Normal   = mul((float3x3) FrameBuffer.NormalMatrix, -normalize(gradient));
+    event.Position = mul(FrameBuffer.WorldMatrix, float4(position, 1.0)).xyz;
     event.View = -ray.Direction;
     event.Diffuse = diffuse;
     event.Specular = 0.04;
@@ -383,15 +366,11 @@ void FirstPass(uint3 id : SV_DispatchThreadID) {
     desc.BoundingBoxCrop.Max = FrameBuffer.BoundingBoxMax;
     desc.StepSize = distance(desc.BoundingBox.Min, desc.BoundingBox.Max) / FrameBuffer.StepCount;
     desc.DensityScale = FrameBuffer.Density;
-    desc.Rotation = FrameBuffer.BoundingBoxRotation;
     desc.GradientDelta = (FrameBuffer.BoundingBoxMax - FrameBuffer.BoundingBoxMin) * FrameBuffer.GradientDelta.xyz;
-    desc.TextureVolumeIntensity = TextureVolumeIntensity;
-    desc.TextureVolumeGradient  = TextureVolumeGradient;
-    desc.TextureDiffuse = TextureTransferFunctionDiffuse;
-    desc.TextureSpecular = TextureTransferFunctionSpecular;
-    desc.TextureRoughness = TextureTransferFunctionRoughness;
-    desc.TextureOpacity = TextureTransferFunctionOpacity;
+
     
+
+
     
        
     [loop]
@@ -402,7 +381,7 @@ void FirstPass(uint3 id : SV_DispatchThreadID) {
        
          if (!event.IsValid) {
             color += (depth == 0 && FrameBuffer.IsEnableEnviroment <= 0.0) ? 0.0 : energy * GetEnviroment(ray.Direction);
-            color *= (depth != 0) ? FrameBuffer.IBLScale : 1.0f;
+            color *= (depth != 0) ? FrameBuffer.LightIntensity : 1.0f;
             break;
          }
 
@@ -414,28 +393,16 @@ void FirstPass(uint3 id : SV_DispatchThreadID) {
         
 
        
-       
-          
-      //  const float3 N = event.Normal;
-      //  const float3 V = event.View;
-      //  const float3 L = GGX_SampleHemisphere(event.Normal, 1.0, rng);
-      // 
-      //         
-      // 
-      //  const float NdotL = saturate(dot(N, L));
-      // 
-      //  ray.Origin = event.Position;
-      //  ray.Direction = L;
-      //  energy *= 2.0 * event.Diffuse * NdotL;
+     
+        
 
-       
+
         const float3 N = event.Normal;
         const float3 V = event.View;
         const float3 H = GGX_SampleHemisphere(event.Normal, event.Alpha, rng);
         const float3 F = FresnelSchlick(event.Specular, saturate(dot(V, N)));
-        
-        
-        
+       
+       
        
         const float pd = length(1 - F);
         const float ps = length(F);
@@ -443,6 +410,8 @@ void FirstPass(uint3 id : SV_DispatchThreadID) {
         const float pdf = ps / (ps + pd);
         
         if (Rand(rng) < pdf) {
+        
+          
         
             const float3 L = reflect(-V, H);
             const float NdotL = saturate(dot(N, L));
@@ -456,17 +425,25 @@ void FirstPass(uint3 id : SV_DispatchThreadID) {
             ray.Direction = L;
             energy *= (G * F * VdotH) / (NdotV * NdotH + FLT_EPSILON) / (pdf);
         
+            
         } else {
-                 
+               
+          
             const float3 L = GGX_SampleHemisphere(N, 1.0, rng);
             const float NdotL = saturate(dot(N, L));
         
             ray.Origin = event.Position;
             ray.Direction = L;
             energy *= 2.0 * saturate((1 - F)) * event.Diffuse * NdotL /(1 - pdf);
+           
         }
 
-              
+            
+     
+        
+      
+
+        
     }
     TextureColorUAV[id.xy] = float4(color, 1.0);
     TexturePositionUAV[id.xy] = float4(position, 1.0);
@@ -481,6 +458,5 @@ void SecondPass(uint3 id : SV_DispatchThreadID) {
     TexturePositionSumUAV[id.xy] = float4((TexturePositionSumUAV[id.xy].xyz * FrameBuffer.FrameIndex + TexturePositionSRV[id.xy].xyz) / (FrameBuffer.FrameIndex + 1), 1.0);
     TextureNormalSumUAV[id.xy]   = float4((TextureNormalSumUAV[id.xy].xyz * FrameBuffer.FrameIndex + TextureNormalSRV[id.xy].xyz) / (FrameBuffer.FrameIndex + 1), 1.0);
     TextureColorSumUAV[id.xy]    = float4((TextureColorSumUAV[id.xy].xyz * FrameBuffer.FrameIndex + TextureColorSRV[id.xy].xyz) / (FrameBuffer.FrameIndex + 1), 1.0);
-    
-   
+      
 }

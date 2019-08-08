@@ -113,11 +113,6 @@ namespace Hawk {
 			auto mat = Mat4x4_tpl<T>(T(1));
 			mat(0, 0) = ctg / aspect;
 			mat(1, 1) = ctg;
-
-		//	mat(2, 2) = zFar / (zFar - zNear);
-		//	mat(2, 3) = -zNear * zFar / (zFar - zNear);
-		//	mat(3, 2) = T(1);
-
 			mat(2, 2) = zFar / (zNear - zFar);
 			mat(2, 3) = zNear * zFar / (zNear - zFar);
 			mat(3, 2) =-T(1);
@@ -132,11 +127,12 @@ namespace Hawk {
 			auto mat = Mat4x4_tpl<T>{ T{ 1 } };
 			mat(0, 0) = T(2) / (right - left);
 			mat(1, 1) = T(2) / (top - bottom);
-			mat(2, 2) = T(1) / (zFar - zNear);
+			mat(2, 2) = T(1) / (zNear - zFar);
 
-			mat(0, 3) = (left + right) / (left - right);
-			mat(1, 3) = (top + bottom) / (bottom - top);
+			mat(0, 3) = -(left + right) / (right - left);
+			mat(1, 3) = -(top + bottom) / (top - bottom);
 			mat(2, 3) = (zNear) / (zNear - zFar);
+		
 			return mat;
 		}
 

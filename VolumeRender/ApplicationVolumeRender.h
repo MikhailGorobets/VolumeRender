@@ -6,9 +6,13 @@
 
 
 struct FrameBuffer {
-	Hawk::Math::Mat4x4 InvViewProjection;
-	Hawk::Math::Mat4x4 BoundingBoxRotation;
+	Hawk::Math::Mat4x4 ViewProjection;
+	Hawk::Math::Mat4x4 WorldMatrix;
+	Hawk::Math::Mat4x4 NormalMatrix;
 
+	Hawk::Math::Mat4x4 InvViewProjection;
+	Hawk::Math::Mat4x4 InvWorldMatrix;
+	Hawk::Math::Mat4x4 InvNormalMatrix;
 
 	F32                BoundingBoxSize;
 	uint32_t           FrameIndex;
@@ -21,15 +25,12 @@ struct FrameBuffer {
 	F32                Exposure;
 	Hawk::Math::Vec3   BoundingBoxMax;
 
-	
-	F32                IBLScale;
-	Hawk::Math::Vec3   _Padding;
 
 	Hawk::Math::Vec3   GradientDelta;
 	F32                DenoiserStrange;
 
 	F32                IsEnableEnviroment;
-	F32                Gamma;
+	F32                LightIntensity;
 	Hawk::Math::Vec2   FrameOffset;
 	
 };
@@ -163,7 +164,7 @@ private:
 	auto InitializeTransferFunction() -> void {
 	
 		boost::property_tree::ptree root;
-		boost::property_tree::read_json("Data/TransferFunction/ManixTransferFunction.json", root);
+		boost::property_tree::read_json("Data/TransferFunctions/ManixTransferFunction.json", root);
 		
 		m_OpacityTransferFunc.Clear();
 		m_DiffuseTransferFunc.Clear();
@@ -183,8 +184,6 @@ private:
 
 		for (auto const& e : root.get_child("Nodes")) {
 
-		
-
 			auto instensity = e.second.get<F32>("Intensity");
 			auto opacity    = e.second.get<F32>("Opacity");
 			auto diffuse    = extractFunction(e.second, "Diffuse");
@@ -194,9 +193,7 @@ private:
 			m_OpacityTransferFunc.AddNode(instensity, opacity);
 			m_DiffuseTransferFunc.AddNode(instensity, diffuse);
 			m_SpecularTransferFunc.AddNode(instensity, specular);
-			m_RoughnessTransferFunc.AddNode(instensity, roughness);
-			
-
+			m_RoughnessTransferFunc.AddNode(instensity, roughness);			
 		}
 
 		
@@ -393,32 +390,43 @@ private:
 			std::cout << e.what() << std::endl;
 		}
 
-		auto view = m_Camera.ToMatrix();
-		auto proj = Hawk::Math::Perspective(Hawk::Math::Radians(m_FieldOfView), m_ApplicationDesc.Width / static_cast<F32>(m_ApplicationDesc.Height), 0.1f, 1000.0f);
-
-	
-		DX::MapHelper<FrameBuffer> map(m_pImmediateContext, m_pCBFrame, D3D11_MAP_WRITE_DISCARD, 0);
-		map->InvViewProjection = Hawk::Math::Transpose(Hawk::Math::Inverse(proj * view));	
-		map->BoundingBoxMin  = m_BoundingBoxMin;
-		map->BoundingBoxMax  = m_BoundingBoxMax;
-		map->BoundingBoxSize = m_BoundingBoxSize;
-		map->BoundingBoxRotation =
+		auto view  = m_Camera.ToMatrix();	
+		auto proj  = Hawk::Math::Perspective(Hawk::Math::Radians(m_FieldOfView), m_ApplicationDesc.Width / static_cast<F32>(m_ApplicationDesc.Height), 0.1f, 1000.0f);
+		auto world = Hawk::Math::Translate(m_BoundingTranslation) *
 			Hawk::Math::RotateX(Hawk::Math::Radians(m_BoundingRotation.x)) *
 			Hawk::Math::RotateY(Hawk::Math::Radians(m_BoundingRotation.y)) *
-			Hawk::Math::RotateZ(Hawk::Math::Radians(m_BoundingRotation.z));
+			Hawk::Math::RotateZ(Hawk::Math::Radians(m_BoundingRotation.z)) * Hawk::Math::Scale(m_Zoom);
+	
+		auto normal = Hawk::Math::Inverse(Hawk::Math::Transpose(world));
 
-		map->Density = m_Density;
-		map->StepCount = m_StepCount;
-		map->TraceDepth = m_TraceDepth;
-		map->FrameIndex = m_FrameIndex;
-		map->Exposure = m_Exposure;
-		map->GradientDelta = Hawk::Math::Vec3(1.0f / m_DimensionX, 1.0f / m_DimensionY, 1.0f / m_DimensionZ);
-		map->FrameOffset = Hawk::Math::Vec2(2.0f * m_RandomDistribution(m_RandomGenerator) - 1.0f, 2.0f * m_RandomDistribution(m_RandomGenerator) - 1.0f);
-		map->Gamma = m_Gamma;
-		map->DenoiserStrange = m_DenoiserStrange;
-		map->IBLScale = m_IBLScale;
-		map->IsEnableEnviroment = m_IsEnableEnviroment ? 1.0f : -1.0f;
 
+		{
+			DX::MapHelper<FrameBuffer> map(m_pImmediateContext, m_pCBFrame, D3D11_MAP_WRITE_DISCARD, 0);
+
+
+			map->BoundingBoxMin = m_BoundingBoxMin;
+			map->BoundingBoxMax = m_BoundingBoxMax;
+			map->BoundingBoxSize = m_BoundingBoxSize;
+			map->ViewProjection = proj * view;
+			map->WorldMatrix = world;
+			map->NormalMatrix = normal;
+
+			map->InvViewProjection = Hawk::Math::Inverse(map->ViewProjection);
+			map->InvWorldMatrix    = Hawk::Math::Inverse(map->WorldMatrix);
+			map->InvNormalMatrix   = Hawk::Math::Inverse(map->NormalMatrix);
+
+			map->Density = m_Density;
+			map->StepCount = m_StepCount;
+			map->TraceDepth = m_TraceDepth;
+			map->FrameIndex = m_FrameIndex;
+			map->Exposure = m_Exposure;
+			map->GradientDelta = Hawk::Math::Vec3(1.0f / m_DimensionX, 1.0f / m_DimensionY, 1.0f / m_DimensionZ);
+			map->FrameOffset = Hawk::Math::Vec2(2.0f * m_RandomDistribution(m_RandomGenerator) - 1.0f, 2.0f * m_RandomDistribution(m_RandomGenerator) - 1.0f);
+			map->DenoiserStrange = m_DenoiserStrange;
+			map->LightIntensity = m_LightIntensity;
+			map->IsEnableEnviroment = m_IsEnableEnviroment ? 1.0f : -1.0f;
+
+		}
 
 		if (auto point = std::make_tuple(0, 0); SDL_GetRelativeMouseState(&std::get<0>(point), &std::get<1>(point)) & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
 			m_Camera.Rotate(Hawk::Components::Camera::LocalUp, -m_RotateSensivity * deltaTime * static_cast<F32>(std::get<0>(point)));
@@ -649,7 +657,7 @@ private:
 		}
 	
 	
-		this->Blit(m_pSRVDenoiser, pRTV);
+		this->Blit(m_pSRVToneMap, pRTV);
 		
 
 		if (m_IsRenderCube) 
@@ -673,6 +681,7 @@ private:
 
 		ImGui::Begin("Settings");
 		m_FrameIndex = ImGui::DragFloat3("Bounding rotation", std::data(m_BoundingRotation)) ? 0 : m_FrameIndex;
+		m_FrameIndex = ImGui::DragFloat3("Bounding translation", std::data(m_BoundingTranslation), 0.01f, -2.0f, 2.0f) ? 0 : m_FrameIndex;
 		ImGui::NewLine();
 		ImGui::SliderFloat("Rotate sentivity", &m_RotateSensivity, 0.1f, 10.0f);
 		ImGui::SliderFloat("Move sentivity", &m_MoveSensivity, 0.1f, 10.0f);
@@ -682,6 +691,7 @@ private:
 		m_FrameIndex = ImGui::SliderFloat("FieldOfView", &m_FieldOfView, 0.1f, 100.0f) ? 0 : m_FrameIndex;
 		m_FrameIndex = ImGui::SliderInt("Step count", (int32_t*)&m_StepCount, 1, 512) ? 0 : m_FrameIndex;
 		m_FrameIndex = ImGui::SliderInt("Trace depth", (int32_t*)&m_TraceDepth, 1, 10) ? 0 : m_FrameIndex;
+		m_FrameIndex = ImGui::SliderFloat("Zoom", &m_Zoom, 0.1f, 10.0f) ? 0 : m_FrameIndex;
 		ImGui::NewLine();
 
 		
@@ -691,9 +701,8 @@ private:
 			&m_OpacityTransferFunc, 64);
 
 		ImGui::NewLine();
-		ImGui::SliderFloat("Gamma", &m_Gamma, 1.8f, 3.0f);
 		ImGui::SliderFloat("Exposure", &m_Exposure, 0.1f, 6.0f);
-		m_FrameIndex = ImGui::SliderFloat("IBLScale", &m_IBLScale, 0.1f, 10.0f) ? 0 : m_FrameIndex;
+		m_FrameIndex = ImGui::SliderFloat("Light intensity", &m_LightIntensity, 0.1f, 10.0f) ? 0 : m_FrameIndex;
 		m_FrameIndex = ImGui::Checkbox("Enable enviroment", &m_IsEnableEnviroment) ? 0 : m_FrameIndex;
 		ImGui::Checkbox("Enable cube", &m_IsRenderCube);
 		
@@ -703,12 +712,9 @@ private:
 	
 
 		ImGui::Begin("Cropping");
-		m_FrameIndex = ImGui::SliderFloat("+X: ", &m_BoundingBoxMax.x, -m_BoundingBoxSize, +m_BoundingBoxSize) ? 0 : m_FrameIndex;
-		m_FrameIndex = ImGui::SliderFloat("-X: ", &m_BoundingBoxMin.x, -m_BoundingBoxSize, +m_BoundingBoxSize) ? 0 : m_FrameIndex;
-		m_FrameIndex = ImGui::SliderFloat("+Y: ", &m_BoundingBoxMax.y, -m_BoundingBoxSize, +m_BoundingBoxSize) ? 0 : m_FrameIndex;
-		m_FrameIndex = ImGui::SliderFloat("-Y: ", &m_BoundingBoxMin.y, -m_BoundingBoxSize, +m_BoundingBoxSize) ? 0 : m_FrameIndex;
-		m_FrameIndex = ImGui::SliderFloat("+Z: ", &m_BoundingBoxMax.z, -m_BoundingBoxSize, +m_BoundingBoxSize) ? 0 : m_FrameIndex;	
-		m_FrameIndex = ImGui::SliderFloat("-Z: ", &m_BoundingBoxMin.z, -m_BoundingBoxSize, +m_BoundingBoxSize) ? 0 : m_FrameIndex;
+
+		m_FrameIndex = ImGui::DragFloat3("Min", std::data(m_BoundingBoxMin), 0.01f, -m_BoundingBoxSize, m_BoundingBoxSize) ? 0 : m_FrameIndex;
+		m_FrameIndex = ImGui::DragFloat3("Max", std::data(m_BoundingBoxMax), 0.01f, -m_BoundingBoxSize, m_BoundingBoxSize) ? 0 : m_FrameIndex;
 
 		ImGui::End();
 
@@ -777,6 +783,8 @@ private:
 
 	Hawk::Components::Camera  m_Camera;
 	Hawk::Math::Vec3          m_BoundingRotation;
+	Hawk::Math::Vec3          m_BoundingTranslation;
+
 	Hawk::Math::Vec3          m_BoundingBoxMin = Hawk::Math::Vec3(-0.5f, -0.5f, -0.5f);
 	Hawk::Math::Vec3          m_BoundingBoxMax = Hawk::Math::Vec3(+0.5f, +0.5f, +0.5f);
 
@@ -785,10 +793,10 @@ private:
 	F32      m_BoundingBoxSize = 0.5f;
 	F32      m_Density         = 30.0f;
 	F32      m_Exposure        = 4.0f;
-	F32      m_IBLScale        = 2.5f;
+	F32      m_LightIntensity  = 2.5f;
 	F32      m_FieldOfView     = 60.0f;
-	F32      m_Gamma           = 2.2f;
 	F32      m_DenoiserStrange = 1.0f;
+	F32      m_Zoom            = 1.0f;
 	uint32_t m_TraceDepth      = 2;
 	uint32_t m_StepCount       = 255;
 	uint32_t m_FrameIndex      = 0;

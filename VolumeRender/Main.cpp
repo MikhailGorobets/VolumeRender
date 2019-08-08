@@ -5,8 +5,8 @@ int main(int argc, char* argv[]) {
 
 	try {
 		auto appDesc = ApplicationDesc{};
-		appDesc.Width = 1280;
-		appDesc.Height = 1024;
+		appDesc.Width = 1024;
+		appDesc.Height = 800;
 		appDesc.Tittle = "Application VolumeRender <DX11>";
 		appDesc.IsFullScreen = false;
 		

@@ -1,13 +1,20 @@
 
 #pragma once
 
+#pragma pack_matrix( row_major )
+
 cbuffer ConstantFrameBuffer : register(b0)
 {
     struct
     {
   
+        float4x4 ViewProjection;
+        float4x4 WorldMatrix;
+        float4x4 NormalMatrix;
+
         float4x4 InvViewProjection;
-        float4x4 BoundingBoxRotation;
+        float4x4 InvWorldMatrix;
+        float4x4 InvNormalMatrix;
 
         float BoundingBoxSize;
         uint  FrameIndex;
@@ -20,15 +27,12 @@ cbuffer ConstantFrameBuffer : register(b0)
         float  Exposure;
         float3 BoundingBoxMax;
        
-      
-        float  IBLScale;
-        float3 _Padding;
 
         float3 GradientDelta;
         float  DenoiserStrange;
 
         float  IsEnableEnviroment;
-        float  Gamma;
+        float  LightIntensity;
         float2 FrameOffset;
     } FrameBuffer;
 }
