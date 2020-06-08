@@ -18,6 +18,8 @@ public:
 	Application(ApplicationDesc const& desc);
 	virtual ~Application();
 
+	virtual auto EventMouseWheel(F32 delta)                                       -> void = 0;
+	virtual auto EventMouseMove(F32 x, F32 y)                                     -> void = 0;
 	virtual auto Update(F32 delta)                                                -> void = 0;
 	virtual auto RenderFrame(Microsoft::WRL::ComPtr<ID3D11RenderTargetView> pRTV) -> void = 0;	
 	virtual auto RenderGUI(Microsoft::WRL::ComPtr<ID3D11RenderTargetView> pRTV)   -> void = 0;

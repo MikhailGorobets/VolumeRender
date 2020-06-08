@@ -27,21 +27,9 @@ float3 ToneMapUncharted2Function(float3 x, float exposure) {
 }
 
 
-float3 LinearToSRGB(float3 color) {
-    float3 sRGBLo = color * 12.92;
-    const float powExp = 1.0 / 2.2;
-    float3 sRGBHi = (pow(abs(color), float3(powExp, powExp, powExp)) * 1.055) - 0.055;
-    float3 sRGB;
-    sRGB.x = (color.x <= 0.0031308) ? sRGBLo.x : sRGBHi.x;
-    sRGB.y = (color.y <= 0.0031308) ? sRGBLo.y : sRGBHi.y;
-    sRGB.z = (color.z <= 0.0031308) ? sRGBLo.z : sRGBHi.z;
-    return sRGB;
-}
-
-
 
 [numthreads(8, 8, 1)]
 void ToneMap(uint3 id : SV_DispatchThreadID) {
     float3 colorHDR = TextureHDR.Load(int3(id.xy, 0)).xyz;
-    TextureLDR[id.xy] = float4(LinearToSRGB(ToneMapUncharted2Function(colorHDR, FrameBuffer.Exposure)), 1.0f);
+    TextureLDR[id.xy] = float4(ToneMapUncharted2Function(colorHDR, FrameBuffer.Exposure), 1.0f);
 }

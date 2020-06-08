@@ -4,7 +4,8 @@
 
 template<uint32_t N>
 struct PiewiseFunction {
-	Hawk::Math::Vec2   Range = { (std::numeric_limits<F32>::min)(), (std::numeric_limits<F32>::max)() };
+	F32                RangeMin = -1024.0f;
+	F32                RangeMax = +3071.0f;
 	uint32_t           Count = 0;
 	std::array<F32, N> Position;
 	std::array<F32, N> Value;
@@ -17,25 +18,20 @@ public:
 
 		this->Position[this->Count] = position;
 		this->Value[this->Count] = value;
-
-		if (position < this->Range.x)
-			this->Range.x = position;
-
-		if (position > this->Range.y)
-			this->Range.y = position;
-
+		 
 		this->Count++;
 	}
 
-	auto Evaluate(F32 position) const -> F32 {
+	auto Evaluate(F32 positionNormalized) const -> F32 {
+		auto position = positionNormalized * (RangeMax - RangeMin) + RangeMin;
 
 		if (this->Count <= 0)
 			return 0.0f;
 
-		if (position < this->Range.x)
+		if (position < this->RangeMin)
 			return this->Value[0];
 
-		if (position > this->Range.y)
+		if (position > this->RangeMax)
 			return this->Value[this->Count - 1];
 
 		for (auto i = 1u; i < this->Count; i++) {
@@ -50,7 +46,6 @@ public:
 	}
 
 	auto Clear() -> void {
-		this->Range = { (std::numeric_limits<F32>::min)(), (std::numeric_limits<F32>::max)() };
 		this->Count = 0;
 	}
 };
@@ -71,7 +66,7 @@ public:
 
 		std::vector<F32> data(sampling);
 		for (auto index = 0u; index < sampling; index++)
-			data[index] = this->Evaluate(index / static_cast<F32>(sampling));
+			data[index] = this->Evaluate(index / static_cast<F32>(sampling - 1));
 
 
 
@@ -99,6 +94,10 @@ public:
 		this->PLF.Clear();
 	}
 
+	float RangeMin = -1024.0f;
+	float RangeMax = 3071.0f;
+
+
 	PiecewiseLinearFunction<> PLF;
 };
 
@@ -123,7 +122,7 @@ public:
 
 		std::vector<Hawk::Math::Vec4> data(sampling);
 		for (auto index = 0u; index < sampling; index++)
-			data[index] = Hawk::Math::Vec4(this->Evaluate(index / static_cast<F32>(sampling)), 0.0f);
+			data[index] = Hawk::Math::Vec4(this->Evaluate(index / static_cast<F32>(sampling - 1)), 0.0f);
 		
 
 		D3D11_TEXTURE1D_DESC desc = {};
@@ -151,6 +150,9 @@ public:
 		this->PLF[1].Clear();
 		this->PLF[2].Clear();
 	}
+
+	float RangeMin = -1024.0f; 
+	float RangeMax =  3071.0f; 
 
 	std::array<PiecewiseLinearFunction<>, 3> PLF;
 };

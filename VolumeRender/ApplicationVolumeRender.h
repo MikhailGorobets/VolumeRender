@@ -2,19 +2,18 @@
 
 #include "Application.h"
 #include "TransferFunction.h"
-#include "Cube.h"
 
 
 struct FrameBuffer {
-	Hawk::Math::Mat4x4 ViewProjection;
+	Hawk::Math::Mat4x4 ViewProjectionMatrix;
 	Hawk::Math::Mat4x4 WorldMatrix;
 	Hawk::Math::Mat4x4 NormalMatrix;
 
-	Hawk::Math::Mat4x4 InvViewProjection;
+	Hawk::Math::Mat4x4 InvViewProjectionMatrix;
 	Hawk::Math::Mat4x4 InvWorldMatrix;
 	Hawk::Math::Mat4x4 InvNormalMatrix;
 
-	F32                BoundingBoxSize;
+	F32                DenoiserStrange;
 	uint32_t           FrameIndex;
 	uint32_t           TraceDepth;
 	uint32_t           StepCount;
@@ -25,15 +24,14 @@ struct FrameBuffer {
 	F32                Exposure;
 	Hawk::Math::Vec3   BoundingBoxMax;
 
-
-	Hawk::Math::Vec3   GradientDelta;
-	F32                DenoiserStrange;
-
-	F32                IsEnableEnviroment;
-	F32                LightIntensity;
 	Hawk::Math::Vec2   FrameOffset;
-	
+	Hawk::Math::Vec2   RenderTargetDim;
+
+
 };
+
+
+
 
 
 
@@ -52,11 +50,7 @@ public:
 		this->InitializeRenderTextures();
 		this->InitializeConstantBuffers();
 		this->InitializeEnviromentMap();
-		
-
-		m_Camera.SetTranslation(0.0f, 0.0f, 1.0f);
-		m_BoundingRotation = Hawk::Math::Vec3(-100.0f, 0.0f, 0.0f);
-		m_pCube = std::make_shared<Cube>(m_pDevice, 1.0f);
+	
 		
 
 	}
@@ -75,25 +69,26 @@ private:
 		file.read(reinterpret_cast<char*>(&m_DimensionY), sizeof(uint16_t));
 		file.read(reinterpret_cast<char*>(&m_DimensionZ), sizeof(uint16_t));
 
-		std::vector<uint16_t> data(m_DimensionX * m_DimensionY * m_DimensionZ);
-		std::vector<F32> intensity(m_DimensionX * m_DimensionY * m_DimensionZ);
+		std::vector<uint16_t> data(size_t(m_DimensionX) * size_t(m_DimensionY) * size_t(m_DimensionZ));
+		std::vector<F32> intensity(size_t(m_DimensionX) * size_t(m_DimensionY) * size_t(m_DimensionZ));
 
 		uint16_t tmin = (std::numeric_limits<uint16_t>::max)();
 		uint16_t tmax = (std::numeric_limits<uint16_t>::min)();
 
+	
+		auto t1 = std::chrono::high_resolution_clock::now();
 		for (auto index = 0u; index < std::size(data); index++) {
 			file.read(reinterpret_cast<char*>(&data[index]), sizeof(uint16_t));
-			tmin = (std::min)(tmin, data[index]);
+ 			tmin = (std::min)(tmin, data[index]);
 			tmax = (std::max)(tmax, data[index]);
 		}
+
+		auto t2 = std::chrono::high_resolution_clock::now();
+		auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
 
 		for (auto index = 0u; index < std::size(intensity); index++)
 			intensity[index] = (data[index] - tmin) / static_cast<F32>(tmax - tmin);
 		
-		
-
-		
-		Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> pUAVVolumeGradient;
 
 		{
 
@@ -103,8 +98,8 @@ private:
 			desc.Depth = m_DimensionZ;
 			desc.Format = DXGI_FORMAT_R32_FLOAT;
 			desc.MipLevels = 1;
-			desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-			desc.Usage = D3D11_USAGE_IMMUTABLE;
+			desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+			desc.Usage = D3D11_USAGE_DEFAULT;
 
 
 			D3D11_SUBRESOURCE_DATA resourceData = {};
@@ -116,48 +111,10 @@ private:
 			Microsoft::WRL::ComPtr<ID3D11Texture3D> pTextureIntensity;
 			DX::ThrowIfFailed(m_pDevice->CreateTexture3D(&desc, &resourceData, pTextureIntensity.GetAddressOf()));
 			DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureIntensity.Get(), nullptr, m_pSRVVolumeIntensity.GetAddressOf()));
+			DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureIntensity.Get(), nullptr, m_pUAVVolumeIntensity.GetAddressOf()));
 
-		}
+		}	
 
-		{
-		
-			
-			D3D11_TEXTURE3D_DESC desc = {};
-			desc.Width  = m_DimensionX;
-			desc.Height = m_DimensionY;
-			desc.Depth  = m_DimensionZ;
-			desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-			desc.MipLevels = 1;
-			desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
-			desc.Usage = D3D11_USAGE_DEFAULT;
-
-
-			
-			Microsoft::WRL::ComPtr<ID3D11Texture3D> pTextureGradient;
-			DX::ThrowIfFailed(m_pDevice->CreateTexture3D(&desc, nullptr, pTextureGradient.GetAddressOf()));
-			DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureGradient.Get(), nullptr, m_pSRVVolumeGradient.GetAddressOf()));
-			DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureGradient.Get(), nullptr, pUAVVolumeGradient.GetAddressOf()));
-
-		}
-
-		ID3D11UnorderedAccessView* ppUAVClear[] = {
-			nullptr
-		};
-
-		ID3D11ShaderResourceView* ppSRVClear[] = {
-			nullptr
-		};
-
-		auto threadGroupsX = static_cast<uint32_t>(std::ceil(m_DimensionX / 8.0f));
-		auto threadGroupsY = static_cast<uint32_t>(std::ceil(m_DimensionY / 8.0f));
-		auto threadGroupsZ = static_cast<uint32_t>(std::ceil(m_DimensionZ / 8.0f));
-
-		m_pImmediateContext->CSSetShader(m_pCSComputeGradient.Get(), nullptr, 0);
-		m_pImmediateContext->CSSetShaderResources(0, 1, m_pSRVVolumeIntensity.GetAddressOf());
-		m_pImmediateContext->CSSetUnorderedAccessViews(0, 1, pUAVVolumeGradient.GetAddressOf(), nullptr);
-		m_pImmediateContext->Dispatch(threadGroupsX, threadGroupsY, threadGroupsZ);
-		m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVClear), ppUAVClear, nullptr);
-		m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
 	
 	}
 
@@ -169,39 +126,45 @@ private:
 		m_OpacityTransferFunc.Clear();
 		m_DiffuseTransferFunc.Clear();
 		m_SpecularTransferFunc.Clear();
+		m_EmissionTransferFunc.Clear();
 		m_RoughnessTransferFunc.Clear();
 
 		auto extractFunction = [](auto const& tree, auto const& key) -> Hawk::Math::Vec3 {
-			Hawk::Math::Vec3 v;
+			Hawk::Math::Vec3 v{};
 			auto index = 0;
 			for (auto& e : tree.get_child(key)) {
-				v[index] = e.second.get_value<F32>() / 255.0f;
+				v[index] = e.second.get_value<F32>();
 				index++;
 			}
 			return v;
 			
 		};
 
-		for (auto const& e : root.get_child("Nodes")) {
+		for (auto const& e : root.get_child("NodesColor")) {
 
-			auto instensity = e.second.get<F32>("Intensity");
-			auto opacity    = e.second.get<F32>("Opacity");
+			auto intensity = e.second.get<F32>("Intensity");	
 			auto diffuse    = extractFunction(e.second, "Diffuse");
 			auto specular   = extractFunction(e.second, "Specular");
 			auto roughness  = e.second.get<F32>("Roughness");
 
-			m_OpacityTransferFunc.AddNode(instensity, opacity);
-			m_DiffuseTransferFunc.AddNode(instensity, diffuse);
-			m_SpecularTransferFunc.AddNode(instensity, specular);
-			m_RoughnessTransferFunc.AddNode(instensity, roughness);			
+			m_DiffuseTransferFunc.AddNode(intensity, diffuse);
+			m_SpecularTransferFunc.AddNode(intensity, specular);
+			m_RoughnessTransferFunc.AddNode(intensity, roughness);			
 		}
 
-		
 
-		m_pSRVOpasityTF   = m_OpacityTransferFunc.GenerateTexture(m_pDevice);
-		m_pSRVDiffuseTF   = m_DiffuseTransferFunc.GenerateTexture(m_pDevice);
-		m_pSRVSpecularTF  = m_SpecularTransferFunc.GenerateTexture(m_pDevice);
-		m_pSRVRoughnessTF = m_RoughnessTransferFunc.GenerateTexture(m_pDevice);
+		for (auto const& e : root.get_child("NodesOpacity")) {
+
+			auto intensity = e.second.get<F32>("Intensity");
+			auto opacity = e.second.get<F32>("Opacity");
+			m_OpacityTransferFunc.AddNode(intensity, opacity);
+
+		}
+
+		m_pSRVOpasityTF   = m_OpacityTransferFunc.GenerateTexture(m_pDevice, m_SamplingCount);
+		m_pSRVDiffuseTF   = m_DiffuseTransferFunc.GenerateTexture(m_pDevice, m_SamplingCount);
+		m_pSRVSpecularTF  = m_SpecularTransferFunc.GenerateTexture(m_pDevice, m_SamplingCount);
+		m_pSRVRoughnessTF = m_RoughnessTransferFunc.GenerateTexture(m_pDevice, m_SamplingCount);
 		
 
 
@@ -246,54 +209,28 @@ private:
 			return pCodeBlob;
 		};
 
-		auto pBlobCSGradient = compileShader(L"Data/Shaders/ComputeGradient.hlsl", "ComputeGradient", "cs_5_0");
-		auto pBlobCSFirstPass = compileShader(L"Data/Shaders/PathTracing.hlsl", "FirstPass", "cs_5_0");
-		auto pBlobCSSecondPass = compileShader(L"Data/Shaders/PathTracing.hlsl", "SecondPass", "cs_5_0");
+		auto pBlobCSFirstPass = compileShader(L"Data/Shaders/PathTracing.hlsl", "RayTracing", "cs_5_0");
+		auto pBlobCSSecondPass = compileShader(L"Data/Shaders/PathTracing.hlsl", "FrameSum", "cs_5_0");
 		auto pBlobCSToneMap = compileShader(L"Data/Shaders/ToneMap.hlsl", "ToneMap", "cs_5_0");
-		auto pBlobCSDenoiser = compileShader(L"Data/Shaders/Denoiser.hlsl", "Denoiser", "cs_5_0");
-		auto pBlobVSBlit = compileShader(L"Data/Shaders/Blitting.hlsl", "FullQuad", "vs_5_0");
-		auto pBlobPSBlit = compileShader(L"Data/Shaders/Blitting.hlsl", "Blitting", "ps_5_0");		
-		auto pBlobVSCube = compileShader(L"Data/Shaders/BoundingBox.hlsl", "VS_Main", "vs_5_0");
-		auto pBlobPSCube = compileShader(L"Data/Shaders/BoundingBox.hlsl", "PS_Main", "ps_5_0");
-		
+		auto pBlobVSBlit = compileShader(L"Data/Shaders/Blitting.hlsl", "BlitVS", "vs_5_0");
+		auto pBlobPSBlit = compileShader(L"Data/Shaders/Blitting.hlsl", "BlitPS", "ps_5_0");		
+	
 
-		DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSGradient->GetBufferPointer(), pBlobCSGradient->GetBufferSize(), nullptr, m_pCSComputeGradient.ReleaseAndGetAddressOf()));
+
+
 		DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSFirstPass->GetBufferPointer(), pBlobCSFirstPass->GetBufferSize(), nullptr, m_pCSPathTracingFirstPass.ReleaseAndGetAddressOf()));
 		DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSSecondPass->GetBufferPointer(), pBlobCSSecondPass->GetBufferSize(), nullptr, m_pCSPathTracingSecondPass.ReleaseAndGetAddressOf()));
 		DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSToneMap->GetBufferPointer(), pBlobCSToneMap->GetBufferSize(), nullptr, m_pCSToneMap.ReleaseAndGetAddressOf()));
-		DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSDenoiser->GetBufferPointer(), pBlobCSDenoiser->GetBufferSize(), nullptr, m_pCSDenoiser.ReleaseAndGetAddressOf()));
+
 		DX::ThrowIfFailed(m_pDevice->CreateVertexShader(pBlobVSBlit->GetBufferPointer(), pBlobVSBlit->GetBufferSize(), nullptr, m_pVSBlit.ReleaseAndGetAddressOf()));
 		DX::ThrowIfFailed(m_pDevice->CreatePixelShader(pBlobPSBlit->GetBufferPointer(), pBlobPSBlit->GetBufferSize(), nullptr, m_pPSBlit.ReleaseAndGetAddressOf()));
-		DX::ThrowIfFailed(m_pDevice->CreateVertexShader(pBlobVSCube->GetBufferPointer(), pBlobVSCube->GetBufferSize(), nullptr, m_pVSRenderCube.ReleaseAndGetAddressOf()));
-		DX::ThrowIfFailed(m_pDevice->CreatePixelShader(pBlobPSCube->GetBufferPointer(), pBlobPSCube->GetBufferSize(), nullptr,  m_pPSRenderCube.ReleaseAndGetAddressOf()));
-
-		{
-			D3D11_INPUT_ELEMENT_DESC desc[] = {
-				 {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0}
-			};
-
-			DX::ThrowIfFailed(m_pDevice->CreateInputLayout(desc, _countof(desc), pBlobVSCube->GetBufferPointer(), pBlobVSCube->GetBufferSize(), m_pRenderCubeInputLayout.ReleaseAndGetAddressOf()));
-		}
-
-		{
-						
-			D3D11_RASTERIZER_DESC  desc = {};
-			desc.FillMode = D3D11_FILL_WIREFRAME;
-			desc.CullMode = D3D11_CULL_NONE;			
-			DX::ThrowIfFailed(m_pDevice->CreateRasterizerState(&desc, m_pRenderCubeRasterState.ReleaseAndGetAddressOf()));
-		}
 	}
 
 	auto InitializeRenderTextures() -> void {
 
-		Microsoft::WRL::ComPtr<ID3D11Texture2D> pTexturePosition;
-		Microsoft::WRL::ComPtr<ID3D11Texture2D> pTextureNormal;
+
 		Microsoft::WRL::ComPtr<ID3D11Texture2D> pTextureColor;
-
-		Microsoft::WRL::ComPtr<ID3D11Texture2D> pTexturePositionSum;
-		Microsoft::WRL::ComPtr<ID3D11Texture2D> pTextureNormalSum;
 		Microsoft::WRL::ComPtr<ID3D11Texture2D> pTextureColorSum;
-
 		Microsoft::WRL::ComPtr<ID3D11Texture2D> pTextureToneMap;
 		Microsoft::WRL::ComPtr<ID3D11Texture2D> pTextureDenoiser;
 	
@@ -309,33 +246,17 @@ private:
 			desc.SampleDesc.Count = 1;
 			desc.SampleDesc.Quality = 0;
 
-
-			DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTexturePosition.ReleaseAndGetAddressOf()));
-			DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTextureNormal.ReleaseAndGetAddressOf()));
 			DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTextureColor.ReleaseAndGetAddressOf()));
-
-			DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTexturePositionSum.ReleaseAndGetAddressOf()));
-			DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTextureNormalSum.ReleaseAndGetAddressOf()));
 			DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTextureColorSum.ReleaseAndGetAddressOf()));
 
-		
-			DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTexturePosition.Get(), nullptr, m_pSRVPosition.ReleaseAndGetAddressOf()));
-			DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureNormal.Get(), nullptr, m_pSRVNormal.ReleaseAndGetAddressOf()));
 			DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureColor.Get(), nullptr, m_pSRVColor.ReleaseAndGetAddressOf()));
-
-			DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTexturePositionSum.Get(), nullptr, m_pSRVPositionSum.ReleaseAndGetAddressOf()));
-			DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureNormalSum.Get(), nullptr, m_pSRVNormalSum.ReleaseAndGetAddressOf()));
 			DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureColorSum.Get(), nullptr, m_pSRVColorSum.ReleaseAndGetAddressOf()));
-		
-			DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTexturePosition.Get(), nullptr, m_pUAVPosition.ReleaseAndGetAddressOf()));
-			DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureNormal.Get(), nullptr,   m_pUAVNormal.ReleaseAndGetAddressOf()));
-			DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureColor.Get(), nullptr, m_pUAVColor.ReleaseAndGetAddressOf()));
 
-			
-			DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTexturePositionSum.Get(), nullptr, m_pUAVPositionSum.ReleaseAndGetAddressOf()));
-			DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureNormalSum.Get(), nullptr, m_pUAVNormalSum.ReleaseAndGetAddressOf()));
+			DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureColor.Get(), nullptr, m_pUAVColor.ReleaseAndGetAddressOf()));
 			DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureColorSum.Get(), nullptr, m_pUAVColorSum.ReleaseAndGetAddressOf()));
 			
+
+
 		}
 		
 		{
@@ -352,12 +273,8 @@ private:
 
 			DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTextureToneMap.GetAddressOf()));
 			DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTextureDenoiser.GetAddressOf()));
-
 			DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureToneMap.Get(), nullptr, m_pSRVToneMap.GetAddressOf()));
-			DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureDenoiser.Get(), nullptr, m_pSRVDenoiser.GetAddressOf()));
-
 			DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureToneMap.Get(), nullptr, m_pUAVToneMap.GetAddressOf()));
-			DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureDenoiser.Get(), nullptr, m_pUAVDenoiser.GetAddressOf()));
 
 		}
 
@@ -373,7 +290,22 @@ private:
 
 	}
 
+	auto EventMouseWheel(F32 delta) -> void override {
+		m_Zoom -= m_ZoomSensivity * m_DeltaTime * delta;
+		m_FrameIndex = 0;
+	}
+
+
+	auto EventMouseMove(F32 x, F32 y) ->  void override {
+
+		 m_Camera.Rotate(Hawk::Components::Camera::LocalUp, m_DeltaTime * -m_RotateSensivity * x);
+		 m_Camera.Rotate(m_Camera.Right(), m_DeltaTime * -m_RotateSensivity  * y);
+		 m_FrameIndex = 0;
+	}
+
 	auto Update(F32 deltaTime) -> void override {
+
+		m_DeltaTime = deltaTime;
 
 		try {
 			if (m_IsReloadShader) {
@@ -389,14 +321,14 @@ private:
 		catch (std::exception const& e) {
 			std::cout << e.what() << std::endl;
 		}
+		
+		auto scaleVector = Hawk::Math::Vec3(0.488f * m_DimensionX, 0.488f * m_DimensionY, 0.7f * m_DimensionZ);
+		scaleVector /= (std::max)({scaleVector.x, scaleVector.y, scaleVector.z});
+
 
 		auto view  = m_Camera.ToMatrix();	
-		auto proj  = Hawk::Math::Perspective(Hawk::Math::Radians(m_FieldOfView), m_ApplicationDesc.Width / static_cast<F32>(m_ApplicationDesc.Height), 0.1f, 1000.0f);
-		auto world = Hawk::Math::Translate(m_BoundingTranslation) *
-			Hawk::Math::RotateX(Hawk::Math::Radians(m_BoundingRotation.x)) *
-			Hawk::Math::RotateY(Hawk::Math::Radians(m_BoundingRotation.y)) *
-			Hawk::Math::RotateZ(Hawk::Math::Radians(m_BoundingRotation.z)) * Hawk::Math::Scale(m_Zoom);
-	
+		auto proj  = Hawk::Math::Orthographic(m_Zoom * (m_ApplicationDesc.Width / static_cast<F32>(m_ApplicationDesc.Height)), m_Zoom, -1.0f, 10.0f);
+		auto world = Hawk::Math::RotateX(Hawk::Math::Radians(-90.0f));
 		auto normal = Hawk::Math::Inverse(Hawk::Math::Transpose(world));
 
 
@@ -404,14 +336,13 @@ private:
 			DX::MapHelper<FrameBuffer> map(m_pImmediateContext, m_pCBFrame, D3D11_MAP_WRITE_DISCARD, 0);
 
 
-			map->BoundingBoxMin = m_BoundingBoxMin;
-			map->BoundingBoxMax = m_BoundingBoxMax;
-			map->BoundingBoxSize = m_BoundingBoxSize;
-			map->ViewProjection = proj * view;
+			map->BoundingBoxMin = scaleVector * m_BoundingBoxMin;
+			map->BoundingBoxMax = scaleVector * m_BoundingBoxMax;
+			map->ViewProjectionMatrix = proj * view;
 			map->WorldMatrix = world;
 			map->NormalMatrix = normal;
 
-			map->InvViewProjection = Hawk::Math::Inverse(map->ViewProjection);
+			map->InvViewProjectionMatrix = Hawk::Math::Inverse(map->ViewProjectionMatrix);
 			map->InvWorldMatrix    = Hawk::Math::Inverse(map->WorldMatrix);
 			map->InvNormalMatrix   = Hawk::Math::Inverse(map->NormalMatrix);
 
@@ -420,43 +351,14 @@ private:
 			map->TraceDepth = m_TraceDepth;
 			map->FrameIndex = m_FrameIndex;
 			map->Exposure = m_Exposure;
-			map->GradientDelta = Hawk::Math::Vec3(1.0f / m_DimensionX, 1.0f / m_DimensionY, 1.0f / m_DimensionZ);
+
+
 			map->FrameOffset = Hawk::Math::Vec2(2.0f * m_RandomDistribution(m_RandomGenerator) - 1.0f, 2.0f * m_RandomDistribution(m_RandomGenerator) - 1.0f);
 			map->DenoiserStrange = m_DenoiserStrange;
-			map->LightIntensity = m_LightIntensity;
-			map->IsEnableEnviroment = m_IsEnableEnviroment ? 1.0f : -1.0f;
+			map->RenderTargetDim = Hawk::Math::Vec2(static_cast<F32>(m_ApplicationDesc.Width), static_cast<F32>(m_ApplicationDesc.Height));
 
 		}
 
-		if (auto point = std::make_tuple(0, 0); SDL_GetRelativeMouseState(&std::get<0>(point), &std::get<1>(point)) & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
-			m_Camera.Rotate(Hawk::Components::Camera::LocalUp, -m_RotateSensivity * deltaTime * static_cast<F32>(std::get<0>(point)));
-			m_Camera.Rotate(m_Camera.Right(), -m_RotateSensivity * deltaTime * static_cast<F32>(std::get<1>(point)));
-			m_FrameIndex = 0;
-		}
-
-		{
-			auto pKeyboardState = SDL_GetKeyboardState(nullptr);
-
-			auto distance = Hawk::Math::Vec3{ 0.0f, 0.0f, 0.0f };
-
-			if ((pKeyboardState[SDL_SCANCODE_DOWN]) || (pKeyboardState[SDL_SCANCODE_W]))
-				distance += deltaTime * m_MoveSensivity * m_Camera.Forward();
-
-			if ((pKeyboardState[SDL_SCANCODE_DOWN]) || (pKeyboardState[SDL_SCANCODE_S]))
-				distance -= deltaTime * m_MoveSensivity * m_Camera.Forward();
-
-			if ((pKeyboardState[SDL_SCANCODE_DOWN]) || (pKeyboardState[SDL_SCANCODE_A]))
-				distance -= deltaTime * m_MoveSensivity * m_Camera.Right();
-
-			if ((pKeyboardState[SDL_SCANCODE_DOWN]) || (pKeyboardState[SDL_SCANCODE_D]))
-				distance += deltaTime * m_MoveSensivity * m_Camera.Right();
-
-			if (distance != Hawk::Math::Vec3(0.0f, 0.0f, 0.0f))
-				m_FrameIndex = 0;
-
-
-			m_Camera.Translate(distance);
-		}
 
 	}
 
@@ -497,35 +399,7 @@ private:
 
 	}
 
-	auto RenderCube(Microsoft::WRL::ComPtr<ID3D11RenderTargetView> pRTV) -> void {
 
-		ID3D11ShaderResourceView* ppSRVClear[] = {
-			nullptr
-		};
-
-		m_pImmediateContext->OMSetRenderTargets(1, pRTV.GetAddressOf(), nullptr);
-		m_pImmediateContext->RSSetViewports(1, &CD3D11_VIEWPORT{ 0.0f, 0.0f, static_cast<float>(m_ApplicationDesc.Width), static_cast<float>(m_ApplicationDesc.Height), 0.0f, 1.0f });
-
-		m_pImmediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		m_pImmediateContext->IASetInputLayout(m_pRenderCubeInputLayout.Get());
-		m_pImmediateContext->VSSetShader(m_pVSRenderCube.Get(), nullptr, 0);
-		m_pImmediateContext->PSSetShader(m_pPSRenderCube.Get(), nullptr, 0);
-		m_pImmediateContext->VSSetConstantBuffers(0, 1, m_pCBFrame.GetAddressOf());
-		m_pImmediateContext->RSSetState(m_pRenderCubeRasterState.Get());
-		m_pCube->Render(m_pImmediateContext);
-
-		m_pImmediateContext->OMSetRenderTargets(0, nullptr, nullptr);
-		m_pImmediateContext->RSSetViewports(0, nullptr);
-
-		m_pImmediateContext->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_UNDEFINED);
-		m_pImmediateContext->IASetInputLayout(nullptr);
-		m_pImmediateContext->RSSetState(nullptr);
-		m_pImmediateContext->VSSetShader(nullptr, nullptr, 0);
-		m_pImmediateContext->PSSetShader(nullptr, nullptr, 0);
-		m_pImmediateContext->PSSetSamplers(0, 0, nullptr);
-		m_pImmediateContext->PSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
-
-	}
 
 	auto RenderFrame(Microsoft::WRL::ComPtr<ID3D11RenderTargetView> pRTV) -> void override {
 	
@@ -560,7 +434,6 @@ private:
 
 			ID3D11ShaderResourceView* ppSRVTextures[] = {
 				m_pSRVVolumeIntensity.Get(),
-				m_pSRVVolumeGradient.Get(),
 				m_pSRVDiffuseTF.Get(),
 				m_pSRVSpecularTF.Get(),
 				m_pSRVRoughnessTF.Get(),
@@ -570,9 +443,7 @@ private:
 
 
 			ID3D11UnorderedAccessView* ppUAVTextures[] = {
-				m_pUAVPosition.Get(),
-				m_pUAVNormal.Get(),
-				m_pUAVColor.Get(),
+				m_pUAVColor.Get()
 			
 			};
 
@@ -590,15 +461,11 @@ private:
 		{
 
 			ID3D11ShaderResourceView* ppSRVTextures[] = {
-				m_pSRVPosition.Get(),
-				m_pSRVNormal.Get(),
 				m_pSRVColor.Get()
 			};
 
 
 			ID3D11UnorderedAccessView* ppUAVTextures[] = {
-				m_pUAVPositionSum.Get(),
-				m_pUAVNormalSum.Get(),
 				m_pUAVColorSum.Get()
 			};
 
@@ -630,39 +497,14 @@ private:
 			m_pImmediateContext->Dispatch(threadGroupsX, threadGroupsY, 1);
 			m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVClear), ppUAVClear, nullptr);
 			m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
-
+		
 		}
 	
-		//Denoiser
-		{
 
-			ID3D11ShaderResourceView* ppSRVTextures[] = {
-				m_pSRVPositionSum.Get(),
-				m_pSRVNormalSum.Get(),
-				m_pSRVToneMap.Get(),
-			};
-
-
-			ID3D11UnorderedAccessView* ppUAVTextures[] = {
-				m_pUAVDenoiser.Get()
-			};
-
-			m_pImmediateContext->CSSetShader(m_pCSDenoiser.Get(), nullptr, 0);
-			m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVTextures), ppSRVTextures);
-			m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVTextures), ppUAVTextures, nullptr);
-			m_pImmediateContext->Dispatch(threadGroupsX, threadGroupsY, 1);
-			m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVClear), ppUAVClear, nullptr);
-			m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
-
-		}
-	
 	
 		this->Blit(m_pSRVToneMap, pRTV);
 		
 
-		if (m_IsRenderCube) 
-			this->RenderCube(pRTV);
-		
 		m_FrameIndex++;
 
 	
@@ -680,44 +522,33 @@ private:
 		ImGui::End();
 
 		ImGui::Begin("Settings");
-		m_FrameIndex = ImGui::DragFloat3("Bounding rotation", std::data(m_BoundingRotation)) ? 0 : m_FrameIndex;
-		m_FrameIndex = ImGui::DragFloat3("Bounding translation", std::data(m_BoundingTranslation), 0.01f, -2.0f, 2.0f) ? 0 : m_FrameIndex;
 		ImGui::NewLine();
 		ImGui::SliderFloat("Rotate sentivity", &m_RotateSensivity, 0.1f, 10.0f);
-		ImGui::SliderFloat("Move sentivity", &m_MoveSensivity, 0.1f, 10.0f);
+		ImGui::SliderFloat("Zoom sentivity", &m_ZoomSensivity, 0.1f, 10.0f);
 		ImGui::NewLine();
 		m_FrameIndex = ImGui::SliderFloat("Density", &m_Density, 0.1f, 100.0f) ? 0 : m_FrameIndex;
-		ImGui::SliderFloat("Denoiser strange", &m_DenoiserStrange, 0.0f, 3.0f);
 		m_FrameIndex = ImGui::SliderFloat("FieldOfView", &m_FieldOfView, 0.1f, 100.0f) ? 0 : m_FrameIndex;
 		m_FrameIndex = ImGui::SliderInt("Step count", (int32_t*)&m_StepCount, 1, 512) ? 0 : m_FrameIndex;
 		m_FrameIndex = ImGui::SliderInt("Trace depth", (int32_t*)&m_TraceDepth, 1, 10) ? 0 : m_FrameIndex;
 		m_FrameIndex = ImGui::SliderFloat("Zoom", &m_Zoom, 0.1f, 10.0f) ? 0 : m_FrameIndex;
+	
+			
+
 		ImGui::NewLine();
 
 		
 		
 		ImGui::PlotLines("Opacity",
-			[](void* data, int idx) { return static_cast<ScalarTransferFunction1D*>(data)->Evaluate(idx / static_cast<F32>(64)); },
-			&m_OpacityTransferFunc, 64);
+			[](void* data, int idx) { return static_cast<ScalarTransferFunction1D*>(data)->Evaluate(idx / static_cast<F32>(256)); },
+			&m_OpacityTransferFunc, m_SamplingCount);
 
 		ImGui::NewLine();
-		ImGui::SliderFloat("Exposure", &m_Exposure, 0.1f, 6.0f);
-		m_FrameIndex = ImGui::SliderFloat("Light intensity", &m_LightIntensity, 0.1f, 10.0f) ? 0 : m_FrameIndex;
-		m_FrameIndex = ImGui::Checkbox("Enable enviroment", &m_IsEnableEnviroment) ? 0 : m_FrameIndex;
-		ImGui::Checkbox("Enable cube", &m_IsRenderCube);
-		
-		
+		ImGui::SliderFloat("Exposure", &m_Exposure, 4.0f, 100.0f);
 
 		ImGui::End();
 	
 
-		ImGui::Begin("Cropping");
-
-		m_FrameIndex = ImGui::DragFloat3("Min", std::data(m_BoundingBoxMin), 0.01f, -m_BoundingBoxSize, m_BoundingBoxSize) ? 0 : m_FrameIndex;
-		m_FrameIndex = ImGui::DragFloat3("Max", std::data(m_BoundingBoxMax), 0.01f, -m_BoundingBoxSize, m_BoundingBoxSize) ? 0 : m_FrameIndex;
-
-		ImGui::End();
-
+	
 
 	}
 
@@ -725,8 +556,8 @@ private:
 
 private:
 	
-	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_pSRVVolumeIntensity;
-	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_pSRVVolumeGradient;
+	Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> m_pUAVVolumeIntensity;
+	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>  m_pSRVVolumeIntensity;
 	
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_pSRVDiffuseTF;
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_pSRVSpecularTF;
@@ -734,74 +565,57 @@ private:
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_pSRVOpasityTF;
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_pSRVEnviroment;
 
-	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>  m_pSRVPosition;
- 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>  m_pSRVNormal;
-	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>  m_pSRVColor;
 
-	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>  m_pSRVPositionSum;
-	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>  m_pSRVNormalSum;
+	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>  m_pSRVColor;
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>  m_pSRVColorSum;
 
-	Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> m_pUAVPosition;
-	Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> m_pUAVNormal;
 	Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> m_pUAVColor;	
-
-	Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> m_pUAVPositionSum;
-	Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> m_pUAVNormalSum;
 	Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> m_pUAVColorSum;
 
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>  m_pSRVToneMap;
-	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>  m_pSRVDenoiser;
 	Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> m_pUAVToneMap;
-	Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> m_pUAVDenoiser;
+
+	
 
 	Microsoft::WRL::ComPtr<ID3D11VertexShader>    m_pVSBlit;
 	Microsoft::WRL::ComPtr<ID3D11PixelShader>     m_pPSBlit;
-	Microsoft::WRL::ComPtr<ID3D11VertexShader>    m_pVSRenderCube;
-	Microsoft::WRL::ComPtr<ID3D11PixelShader>     m_pPSRenderCube;
-	Microsoft::WRL::ComPtr<ID3D11InputLayout>     m_pRenderCubeInputLayout;
-	Microsoft::WRL::ComPtr<ID3D11RasterizerState> m_pRenderCubeRasterState;
 
-	Microsoft::WRL::ComPtr<ID3D11ComputeShader> m_pCSComputeGradient;
 	Microsoft::WRL::ComPtr<ID3D11ComputeShader> m_pCSPathTracingFirstPass;
 	Microsoft::WRL::ComPtr<ID3D11ComputeShader> m_pCSPathTracingSecondPass;
 	Microsoft::WRL::ComPtr<ID3D11ComputeShader> m_pCSToneMap;
-	Microsoft::WRL::ComPtr<ID3D11ComputeShader> m_pCSDenoiser;
+
 
 	Microsoft::WRL::ComPtr<ID3D11SamplerState>  m_pSamplerPoint;
 	Microsoft::WRL::ComPtr<ID3D11SamplerState>  m_pSamplerLinear;
 	Microsoft::WRL::ComPtr<ID3D11SamplerState>  m_pSamplerAnisotropic;
 
-	Microsoft::WRL::ComPtr<ID3D11Buffer>        m_pCBFrame;	
-	std::shared_ptr<Cube>                       m_pCube;
+	Microsoft::WRL::ComPtr<ID3D11Buffer>        m_pCBFrame;
 
 	ColorTransferFunction1D                     m_DiffuseTransferFunc;
 	ColorTransferFunction1D                     m_SpecularTransferFunc;
+	ColorTransferFunction1D                     m_EmissionTransferFunc;
 	ScalarTransferFunction1D                    m_RoughnessTransferFunc;
 	ScalarTransferFunction1D                    m_OpacityTransferFunc;
 
 
 	Hawk::Components::Camera  m_Camera;
-	Hawk::Math::Vec3          m_BoundingRotation;
-	Hawk::Math::Vec3          m_BoundingTranslation;
 
 	Hawk::Math::Vec3          m_BoundingBoxMin = Hawk::Math::Vec3(-0.5f, -0.5f, -0.5f);
 	Hawk::Math::Vec3          m_BoundingBoxMax = Hawk::Math::Vec3(+0.5f, +0.5f, +0.5f);
 
-	F32      m_RotateSensivity = 0.25f;
-	F32      m_MoveSensivity   = 0.5f;
-	F32      m_BoundingBoxSize = 0.5f;
-	F32      m_Density         = 30.0f;
-	F32      m_Exposure        = 4.0f;
-	F32      m_LightIntensity  = 2.5f;
-	F32      m_FieldOfView     = 60.0f;
-	F32      m_DenoiserStrange = 1.0f;
-	F32      m_Zoom            = 1.0f;
-	uint32_t m_TraceDepth      = 2;
-	uint32_t m_StepCount       = 255;
-	uint32_t m_FrameIndex      = 0;
-	bool     m_IsEnableEnviroment  = false;
-	bool     m_IsRenderCube        = false;
+	F32      m_DeltaTime        = 0.0f;
+	F32      m_RotateSensivity  = 0.25f;
+	F32      m_ZoomSensivity    = 1.5f;
+	F32      m_Density          = 30.0f;
+	F32      m_Exposure         = 80.0f;
+	F32      m_FieldOfView      = 60.0f;
+	F32      m_DenoiserStrange  = 1.0f;
+	F32      m_Zoom             = 1.0f;
+	uint32_t m_TraceDepth       = 2;
+	uint32_t m_StepCount        = 255;
+	uint32_t m_FrameIndex       = 0;
+	uint32_t m_SamplingCount    = 256;
+
 	bool     m_IsReloadShader      = false;
 	bool     m_IsReloadTranferFunc = false;
 	

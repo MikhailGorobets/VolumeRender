@@ -88,7 +88,7 @@ namespace Hawk {
 
 		template<> 
 		[[nodiscard]] ILINE constexpr auto Convert<Plane, Vec4>(Plane const& p) noexcept -> Vec4 {
-			return Vec4(p.Normal(), p.Offset());
+			return Vec4(p.Normal, p.Offset);
 		}
 
 

@@ -22,9 +22,15 @@ auto Application::Run() -> void {
 	
 	bool isRun = true;
 	while (isRun) {
+
+		SDL_PumpEvents();
+
 		SDL_Event event;
 		while (SDL_PollEvent(&event)) {			
 			switch (event.type) {
+				case SDL_MOUSEWHEEL:
+					this->EventMouseWheel(static_cast<F32>(event.wheel.y));
+					break;
 				case SDL_QUIT:
 					isRun = false;
 					break;	
@@ -34,10 +40,18 @@ auto Application::Run() -> void {
 			
 		}
 	
+		if (auto point = std::make_tuple(0, 0); SDL_GetRelativeMouseState(&std::get<0>(point), &std::get<1>(point))& SDL_BUTTON(SDL_BUTTON_RIGHT)) {
+			this->EventMouseMove(static_cast<F32>(std::get<0>(point)), static_cast<F32>(std::get<1>(point)));
+		}
+
+
 		ImGui_ImplDX11_NewFrame();
 		ImGui_ImplSDL2_NewFrame(m_pWindow);
-		
 		ImGui::NewFrame();
+
+		
+		
+	
 
 		this->Update(this->CalculateFrameTime());
 	
@@ -71,7 +85,7 @@ auto Application::InitializeDirectX() -> void {
 
 	SDL_SysWMinfo windowInfo = {};
 	SDL_GetWindowWMInfo(m_pWindow, &windowInfo);
-
+	
 	
 	{
 		DXGI_SWAP_CHAIN_DESC desc = {};
@@ -116,13 +130,14 @@ auto Application::InitializeDirectX() -> void {
 auto Application::InitializeImGUI() -> void {
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
+
 	auto& io = ImGui::GetIO();
 	io.Fonts->AddFontFromFileTTF("Data/Fonts/Roboto-Medium.ttf", 14.0f);
-	
 
 	ImGui::StyleColorsDark();
 	ImGui_ImplDX11_Init(m_pDevice.Get(), m_pImmediateContext.Get());
 	ImGui_ImplSDL2_InitForVulkan(m_pWindow);
+
 
 
 }
