@@ -264,7 +264,7 @@ private:
 			D3D11_TEXTURE2D_DESC desc = {};
 			desc.ArraySize = 1;
 			desc.MipLevels = 1;
-			desc.Format = DXGI_FORMAT_R32G32B32A32_UINT;
+			desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
 			desc.Width = m_ApplicationDesc.Width;
 			desc.Height = m_ApplicationDesc.Height;
 			desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
