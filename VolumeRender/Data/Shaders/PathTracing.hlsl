@@ -47,7 +47,7 @@ float3 FresnelSchlick(float3 F0, float VdotH) {
 
 float GGX_PartialGeometry(float NdotX, float alpha) {
     const float aa = alpha * alpha;
-    return 2.0 * NdotX / (NdotX + sqrt(aa + (1.0 - aa) * (NdotX * NdotX)));
+    return 2.0 * NdotX / max((NdotX + sqrt(aa + (1.0 - aa) * (NdotX * NdotX))), FLT_EPSILON);
 }
 
 float GGX_Distribution(float NdotH, float alpha) {
@@ -115,7 +115,7 @@ float GetRoughness(VolumeDesc desc, float3 position) {
 
 float3 GetEnvironment(float3 direction){
    const float theta = acos(direction.y) / M_PI;
-   const float phi = atan2(direction.x, -direction.z) / -M_PI * 0.5f;
+   const float phi = atan2(direction.x, -direction.z) / M_PI * 0.5f;
    return TextureEnvironment.SampleLevel(SamplerAnisotropic, float2(phi, theta), 0);
    
 }
@@ -149,8 +149,7 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
     float3 position = float3(0.0f, 0.0f, 0.0f);
 	
 	
-    while (sum < threshold)
-    {
+    while (sum < threshold) {
         position = ray.Origin + t * ray.Direction;
         if (t >= maxT)
             return event;
@@ -271,6 +270,6 @@ void RayTracing(uint3 id : SV_DispatchThreadID) {
 
 [numthreads(8, 8, 1)]
 void FrameSum(uint3 id : SV_DispatchThreadID) {
-    TextureColorSumUAV[id.xy]    = float4((TextureColorSumUAV[id.xy].xyz * FrameBuffer.FrameIndex + TextureColorSRV[id.xy].xyz) / (FrameBuffer.FrameIndex + 1), 1.0);
-      
+    float alpha = 1.0f / (FrameBuffer.FrameIndex + 1.0f);
+    TextureColorSumUAV[id.xy] = lerp(TextureColorSumUAV[id.xy], TextureColorSRV[id.xy], float4(alpha, alpha, alpha, alpha));
 }

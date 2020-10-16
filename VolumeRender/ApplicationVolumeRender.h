@@ -120,8 +120,11 @@ private:
 
 	auto InitializeTransferFunction() -> void {
 	
-		boost::property_tree::ptree root;
-		boost::property_tree::read_json("Data/TransferFunctions/ManixTransferFunction.json", root);
+		nlohmann::json root;
+	
+		std::ifstream file("Data/TransferFunctions/ManixTransferFunction.json");
+		file >> root;
+
 		
 		m_OpacityTransferFunc.Clear();
 		m_DiffuseTransferFunc.Clear();
@@ -132,20 +135,21 @@ private:
 		auto extractFunction = [](auto const& tree, auto const& key) -> Hawk::Math::Vec3 {
 			Hawk::Math::Vec3 v{};
 			auto index = 0;
-			for (auto& e : tree.get_child(key)) {
-				v[index] = e.second.get_value<F32>();
+			for (auto& e : tree[key]) {
+				v[index] = e.get<F32>();
 				index++;
 			}
 			return v;
 			
 		};
 
-		for (auto const& e : root.get_child("NodesColor")) {
+		for (auto const& e : root["NodesColor"]) {
 
-			auto intensity = e.second.get<F32>("Intensity");	
-			auto diffuse    = extractFunction(e.second, "Diffuse");
-			auto specular   = extractFunction(e.second, "Specular");
-			auto roughness  = e.second.get<F32>("Roughness");
+			
+			auto intensity = e["Intensity"].get<F32>();
+			auto diffuse    = extractFunction(e, "Diffuse");
+			auto specular   = extractFunction(e, "Specular");
+			auto roughness  = e["Roughness"].get<F32>();
 
 			m_DiffuseTransferFunc.AddNode(intensity, diffuse);
 			m_SpecularTransferFunc.AddNode(intensity, specular);
@@ -153,10 +157,10 @@ private:
 		}
 
 
-		for (auto const& e : root.get_child("NodesOpacity")) {
-
-			auto intensity = e.second.get<F32>("Intensity");
-			auto opacity = e.second.get<F32>("Opacity");
+		for (auto const& e : root["NodesOpacity"]) {
+			
+			auto intensity = e["Intensity"].get<F32>();
+			auto opacity = e["Opacity"].get<F32>();
 			m_OpacityTransferFunc.AddNode(intensity, opacity);
 
 		}
@@ -232,14 +236,14 @@ private:
 		Microsoft::WRL::ComPtr<ID3D11Texture2D> pTextureColor;
 		Microsoft::WRL::ComPtr<ID3D11Texture2D> pTextureColorSum;
 		Microsoft::WRL::ComPtr<ID3D11Texture2D> pTextureToneMap;
-		Microsoft::WRL::ComPtr<ID3D11Texture2D> pTextureDenoiser;
+	
 	
 		{
 
 			D3D11_TEXTURE2D_DESC desc = {};
 			desc.ArraySize = 1;
 			desc.MipLevels = 1;
-			desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+			desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 			desc.Width = m_ApplicationDesc.Width;
 			desc.Height = m_ApplicationDesc.Height;
 			desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
@@ -247,17 +251,34 @@ private:
 			desc.SampleDesc.Quality = 0;
 
 			DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTextureColor.ReleaseAndGetAddressOf()));
-			DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTextureColorSum.ReleaseAndGetAddressOf()));
-
 			DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureColor.Get(), nullptr, m_pSRVColor.ReleaseAndGetAddressOf()));
-			DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureColorSum.Get(), nullptr, m_pSRVColorSum.ReleaseAndGetAddressOf()));
-
 			DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureColor.Get(), nullptr, m_pUAVColor.ReleaseAndGetAddressOf()));
-			DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureColorSum.Get(), nullptr, m_pUAVColorSum.ReleaseAndGetAddressOf()));
-			
+	
 
 
 		}
+
+
+		{
+
+			D3D11_TEXTURE2D_DESC desc = {};
+			desc.ArraySize = 1;
+			desc.MipLevels = 1;
+			desc.Format = DXGI_FORMAT_R32G32B32A32_UINT;
+			desc.Width = m_ApplicationDesc.Width;
+			desc.Height = m_ApplicationDesc.Height;
+			desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+			desc.SampleDesc.Count = 1;
+			desc.SampleDesc.Quality = 0;
+
+		
+			DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTextureColorSum.ReleaseAndGetAddressOf()));
+			DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureColorSum.Get(), nullptr, m_pSRVColorSum.ReleaseAndGetAddressOf()));
+			DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureColorSum.Get(), nullptr, m_pUAVColorSum.ReleaseAndGetAddressOf()));
+
+
+		}
+
 		
 		{
 			
@@ -272,7 +293,6 @@ private:
 			desc.SampleDesc.Quality = 0;
 
 			DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTextureToneMap.GetAddressOf()));
-			DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTextureDenoiser.GetAddressOf()));
 			DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureToneMap.Get(), nullptr, m_pSRVToneMap.GetAddressOf()));
 			DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureToneMap.Get(), nullptr, m_pUAVToneMap.GetAddressOf()));
 
@@ -325,10 +345,11 @@ private:
 		auto scaleVector = Hawk::Math::Vec3(0.488f * m_DimensionX, 0.488f * m_DimensionY, 0.7f * m_DimensionZ);
 		scaleVector /= (std::max)({scaleVector.x, scaleVector.y, scaleVector.z});
 
+		
 
-		auto view  = m_Camera.ToMatrix();	
-		auto proj  = Hawk::Math::Orthographic(m_Zoom * (m_ApplicationDesc.Width / static_cast<F32>(m_ApplicationDesc.Height)), m_Zoom, -1.0f, 10.0f);
-		auto world = Hawk::Math::RotateX(Hawk::Math::Radians(-90.0f));
+		auto view   = m_Camera.ToMatrix();			
+		auto proj   = Hawk::Math::Orthographic(m_Zoom * (m_ApplicationDesc.Width / static_cast<F32>(m_ApplicationDesc.Height)), m_Zoom, -2.0f, 2.0f);
+		auto world  = Hawk::Math::RotateX(Hawk::Math::Radians(-90.0f));
 		auto normal = Hawk::Math::Inverse(Hawk::Math::Transpose(world));
 
 
@@ -365,7 +386,7 @@ private:
 	auto Blit(Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> pSrc, Microsoft::WRL::ComPtr<ID3D11RenderTargetView> pDst) -> void {
 
 		ID3D11ShaderResourceView* ppSRVClear[] = {
-			nullptr
+			nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
 		};
 		
 		m_pImmediateContext->OMSetRenderTargets(1, pDst.GetAddressOf(), nullptr);
@@ -527,7 +548,6 @@ private:
 		ImGui::SliderFloat("Zoom sentivity", &m_ZoomSensivity, 0.1f, 10.0f);
 		ImGui::NewLine();
 		m_FrameIndex = ImGui::SliderFloat("Density", &m_Density, 0.1f, 100.0f) ? 0 : m_FrameIndex;
-		m_FrameIndex = ImGui::SliderFloat("FieldOfView", &m_FieldOfView, 0.1f, 100.0f) ? 0 : m_FrameIndex;
 		m_FrameIndex = ImGui::SliderInt("Step count", (int32_t*)&m_StepCount, 1, 512) ? 0 : m_FrameIndex;
 		m_FrameIndex = ImGui::SliderInt("Trace depth", (int32_t*)&m_TraceDepth, 1, 10) ? 0 : m_FrameIndex;
 		m_FrameIndex = ImGui::SliderFloat("Zoom", &m_Zoom, 0.1f, 10.0f) ? 0 : m_FrameIndex;
@@ -606,13 +626,12 @@ private:
 	F32      m_DeltaTime        = 0.0f;
 	F32      m_RotateSensivity  = 0.25f;
 	F32      m_ZoomSensivity    = 1.5f;
-	F32      m_Density          = 30.0f;
-	F32      m_Exposure         = 80.0f;
-	F32      m_FieldOfView      = 60.0f;
+	F32      m_Density          = 100.0f;
+	F32      m_Exposure         = 30.0f;
 	F32      m_DenoiserStrange  = 1.0f;
 	F32      m_Zoom             = 1.0f;
 	uint32_t m_TraceDepth       = 2;
-	uint32_t m_StepCount        = 255;
+	uint32_t m_StepCount        = 180;
 	uint32_t m_FrameIndex       = 0;
 	uint32_t m_SamplingCount    = 256;
 

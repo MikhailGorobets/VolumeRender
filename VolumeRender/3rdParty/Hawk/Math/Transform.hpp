@@ -84,7 +84,7 @@ namespace Hawk {
 
 		template<typename T>
 		[[nodiscard]] ILINE constexpr auto Translate(T x, T y, T z) noexcept -> Mat4x4_tpl<T> {
-			return Math::Translate({x, y, z});
+			return Math::Translate(Vec3_tpl<T>{x, y, z});
 		}
 
 		template<typename T>

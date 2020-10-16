@@ -89,7 +89,7 @@ auto Application::InitializeDirectX() -> void {
 	
 	{
 		DXGI_SWAP_CHAIN_DESC desc = {};
-		desc.BufferCount = 1;
+		desc.BufferCount = 2;
 		desc.BufferDesc.Width  = m_ApplicationDesc.Width;
 		desc.BufferDesc.Height = m_ApplicationDesc.Height;
 		desc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -100,6 +100,7 @@ auto Application::InitializeDirectX() -> void {
 		desc.SampleDesc.Count = 1;
 		desc.SampleDesc.Quality = 0;
 		desc.Windowed = !m_ApplicationDesc.IsFullScreen;
+		desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 
 	
 		D3D_FEATURE_LEVEL pFutureLever[] = { D3D_FEATURE_LEVEL_11_1 };
@@ -119,6 +120,8 @@ auto Application::InitializeDirectX() -> void {
 			DX::ThrowIfFailed(m_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<LPVOID*>(pBackBuffer.GetAddressOf())));
 			DX::ThrowIfFailed(m_pDevice->CreateRenderTargetView(pBackBuffer.Get(), nullptr, m_pRTV.GetAddressOf()));
 		}
+
+
 
 	}
 

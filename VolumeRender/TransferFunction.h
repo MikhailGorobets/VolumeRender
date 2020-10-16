@@ -23,7 +23,7 @@ public:
 	}
 
 	auto Evaluate(F32 positionNormalized) const -> F32 {
-		auto position = positionNormalized * (RangeMax - RangeMin) + RangeMin;
+		auto position = positionNormalized * (this->RangeMax - this->RangeMin) + this->RangeMin;
 
 		if (this->Count <= 0)
 			return 0.0f;
@@ -94,9 +94,6 @@ public:
 		this->PLF.Clear();
 	}
 
-	float RangeMin = -1024.0f;
-	float RangeMax = 3071.0f;
-
 
 	PiecewiseLinearFunction<> PLF;
 };
@@ -150,9 +147,6 @@ public:
 		this->PLF[1].Clear();
 		this->PLF[2].Clear();
 	}
-
-	float RangeMin = -1024.0f; 
-	float RangeMax =  3071.0f; 
 
 	std::array<PiecewiseLinearFunction<>, 3> PLF;
 };

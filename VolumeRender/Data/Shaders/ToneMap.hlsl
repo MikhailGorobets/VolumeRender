@@ -19,17 +19,27 @@ float3 ToneMapUncharted2Function(float3 x, float exposure) {
     const float F = 0.30;
     const float W = 11.2;
 
-    float3 color = Uncharted2Function(A, B, C, D, E, F, x * exposure);
-    float3 white = Uncharted2Function(A, B, C, D, E, F, W);
+    float3 numerator   = Uncharted2Function(A, B, C, D, E, F, x) * exposure;
+    float3 denominator = Uncharted2Function(A, B, C, D, E, F, W);
 
-    return color / white;
+    return numerator / denominator;
 
 }
 
+float3 LinearToSRGB(float3 color) {
+    float3 sRGBLo = color * 12.92;
+    const float powExp = 1.0 / 2.2f;
+    float3 sRGBHi = (pow(abs(color), float3(powExp, powExp, powExp)) * 1.055) - 0.055;
+    float3 sRGB;
+    sRGB.x = (color.x <= 0.0031308) ? sRGBLo.x : sRGBHi.x;
+    sRGB.y = (color.y <= 0.0031308) ? sRGBLo.y : sRGBHi.y;
+    sRGB.z = (color.z <= 0.0031308) ? sRGBLo.z : sRGBHi.z;
+    return sRGB;
+}
 
 
 [numthreads(8, 8, 1)]
 void ToneMap(uint3 id : SV_DispatchThreadID) {
     float3 colorHDR = TextureHDR.Load(int3(id.xy, 0)).xyz;
-    TextureLDR[id.xy] = float4(ToneMapUncharted2Function(colorHDR, FrameBuffer.Exposure), 1.0f);
+    TextureLDR[id.xy] = float4(LinearToSRGB(ToneMapUncharted2Function(colorHDR, FrameBuffer.Exposure)), 1.0f);
 }

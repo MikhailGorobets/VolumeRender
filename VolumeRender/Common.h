@@ -16,8 +16,8 @@
 #include <d3dcompiler.h>
 #include <wrl.h>
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_syswm.h>
+#include <SDL.h>
+#include <SDL_syswm.h>
 
 #include <ImGui/imgui.h>
 #include <ImGui/imgui_impl_dx11.h>
@@ -25,8 +25,7 @@
 
 #include <DirectXTex/DDSTextureLoader.h>
 
-#include <boost/property_tree/ptree.hpp>
-#include <boost/property_tree/json_parser.hpp>
+#include <nlohmann/json.hpp>
 
 #include <Hawk/Math/Functions.hpp>
 #include <Hawk/Math/Transform.hpp>
