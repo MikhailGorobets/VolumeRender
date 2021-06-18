@@ -82,7 +82,7 @@ auto Application::InitializeDirectX() -> void {
 		desc.Windowed = !m_ApplicationDesc.IsFullScreen;
 		desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 	
-		D3D_FEATURE_LEVEL pFutureLever[] = { D3D_FEATURE_LEVEL_11_1 };
+		D3D_FEATURE_LEVEL pFutureLever[] = { D3D_FEATURE_LEVEL_11_0 };
 		uint32_t createFlag = 0;
 
 #ifdef _DEBUG

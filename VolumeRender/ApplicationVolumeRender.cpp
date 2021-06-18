@@ -43,26 +43,27 @@ ApplicationVolumeRender:: ApplicationVolumeRender(ApplicationDesc const& desc)
 
 auto ApplicationVolumeRender::InitializeShaders() -> void {
     auto compileShader = [](auto fileName, auto entrypoint, auto target) -> Microsoft::WRL::ComPtr<ID3DBlob> {
-        Microsoft::WRL::ComPtr<ID3DBlob> pCodeBlob;
-        Microsoft::WRL::ComPtr<ID3DBlob> pErrorBlob;
+        DX::ComPtr<ID3DBlob> pCodeBlob;
+        DX::ComPtr<ID3DBlob> pErrorBlob;
 
         if (FAILED(D3DCompileFromFile(fileName, nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, entrypoint, target, 0, 0, pCodeBlob.GetAddressOf(), pErrorBlob.GetAddressOf())))
             throw std::runtime_error(static_cast<const char*>(pErrorBlob->GetBufferPointer()));
         return pCodeBlob;
     };
 
-    auto pBlobCSFirstPass = compileShader(L"Data/Shaders/PathTracing.hlsl", "RayTracing", "cs_5_0");
-    auto pBlobCSSecondPass = compileShader(L"Data/Shaders/PathTracing.hlsl", "FrameSum", "cs_5_0");
+    auto pBlobCSPathTracing = compileShader(L"Data/Shaders/PathTracing.hlsl", "RayTracing", "cs_5_0");
+    auto pBlobCSPathTracingSum = compileShader(L"Data/Shaders/PathTracing.hlsl", "FrameSum", "cs_5_0");
     auto pBlobCSToneMap = compileShader(L"Data/Shaders/ToneMap.hlsl", "ToneMap", "cs_5_0");
     auto pBlobVSBlit = compileShader(L"Data/Shaders/Blitting.hlsl", "BlitVS", "vs_5_0");
     auto pBlobPSBlit = compileShader(L"Data/Shaders/Blitting.hlsl", "BlitPS", "ps_5_0");
 
-    DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSFirstPass->GetBufferPointer(), pBlobCSFirstPass->GetBufferSize(), nullptr, m_pCSPathTracingFirstPass.ReleaseAndGetAddressOf()));
-    DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSSecondPass->GetBufferPointer(), pBlobCSSecondPass->GetBufferSize(), nullptr, m_pCSPathTracingSecondPass.ReleaseAndGetAddressOf()));
-    DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSToneMap->GetBufferPointer(), pBlobCSToneMap->GetBufferSize(), nullptr, m_pCSToneMap.ReleaseAndGetAddressOf()));
+    DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSPathTracing->GetBufferPointer(), pBlobCSPathTracing->GetBufferSize(), nullptr, m_PSOPathTracing.pCS.ReleaseAndGetAddressOf()));
+    DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSPathTracingSum->GetBufferPointer(), pBlobCSPathTracingSum->GetBufferSize(), nullptr, m_PSOPathTracingSum.pCS.ReleaseAndGetAddressOf()));
+    DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSToneMap->GetBufferPointer(), pBlobCSToneMap->GetBufferSize(), nullptr, m_PSOToneMap.pCS.ReleaseAndGetAddressOf()));
 
-    DX::ThrowIfFailed(m_pDevice->CreateVertexShader(pBlobVSBlit->GetBufferPointer(), pBlobVSBlit->GetBufferSize(), nullptr, m_pVSBlit.ReleaseAndGetAddressOf()));
-    DX::ThrowIfFailed(m_pDevice->CreatePixelShader(pBlobPSBlit->GetBufferPointer(), pBlobPSBlit->GetBufferSize(), nullptr, m_pPSBlit.ReleaseAndGetAddressOf()));
+    DX::ThrowIfFailed(m_pDevice->CreateVertexShader(pBlobVSBlit->GetBufferPointer(), pBlobVSBlit->GetBufferSize(), nullptr, m_PSOBlit.pVS.ReleaseAndGetAddressOf()));
+    DX::ThrowIfFailed(m_pDevice->CreatePixelShader(pBlobPSBlit->GetBufferPointer(), pBlobPSBlit->GetBufferSize(), nullptr, m_PSOBlit.pPS.ReleaseAndGetAddressOf()));
+    m_PSOBlit.PrimitiveTopology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 }
 
 auto ApplicationVolumeRender::InitializeVolumeTexture() -> void {
@@ -308,26 +309,25 @@ auto ApplicationVolumeRender::Blit(DX::ComPtr<ID3D11ShaderResourceView> pSrc, DX
     ID3D11ShaderResourceView* ppSRVClear[] = {
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
     };
-
+    
+    //Set RTVs
     m_pImmediateContext->OMSetRenderTargets(1, pDst.GetAddressOf(), nullptr);
     m_pImmediateContext->RSSetViewports(1, &CD3D11_VIEWPORT{ 0.0f, 0.0f, static_cast<float>(m_ApplicationDesc.Width), static_cast<float>(m_ApplicationDesc.Height), 0.0f, 1.0f });
 
-    m_pImmediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    m_pImmediateContext->IASetInputLayout(nullptr);
-    m_pImmediateContext->VSSetShader(m_pVSBlit.Get(), nullptr, 0);
-    m_pImmediateContext->PSSetShader(m_pPSBlit.Get(), nullptr, 0);
+    //Bind PSO and Resources
+    m_PSOBlit.Apply(m_pImmediateContext);
     m_pImmediateContext->PSSetShaderResources(0, 1, pSrc.GetAddressOf());
     m_pImmediateContext->PSSetSamplers(0, 1, m_pSamplerPoint.GetAddressOf());
+
+    //Execute
     m_pImmediateContext->Draw(6, 0);
 
+    //Unbind RTV's
     m_pImmediateContext->OMSetRenderTargets(0, nullptr, nullptr);
     m_pImmediateContext->RSSetViewports(0, nullptr);
 
-    m_pImmediateContext->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_UNDEFINED);
-    m_pImmediateContext->IASetInputLayout(nullptr);
-    m_pImmediateContext->RSSetState(nullptr);
-    m_pImmediateContext->VSSetShader(nullptr, nullptr, 0);
-    m_pImmediateContext->PSSetShader(nullptr, nullptr, 0);
+    //Unbind PSO and unbind Resources
+    m_PSODefault.Apply(m_pImmediateContext);
     m_pImmediateContext->PSSetSamplers(0, 0, nullptr);
     m_pImmediateContext->PSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
 }
@@ -370,7 +370,7 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
         };
 
         //First pass Sample Monte Carlo
-        m_pImmediateContext->CSSetShader(m_pCSPathTracingFirstPass.Get(), nullptr, 0);
+        m_PSOPathTracing.Apply(m_pImmediateContext);
         m_pImmediateContext->CSSetConstantBuffers(0, 1, m_pCBFrame.GetAddressOf());
         m_pImmediateContext->CSSetSamplers(0, _countof(ppSamplers), ppSamplers);
         m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVTextures), ppSRVTextures);
@@ -391,7 +391,7 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
         };
 
         //Second pass Integrate Monte Carlo
-        m_pImmediateContext->CSSetShader(m_pCSPathTracingSecondPass.Get(), nullptr, 0);
+        m_PSOPathTracingSum.Apply(m_pImmediateContext);
         m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVTextures), ppSRVTextures);
         m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVTextures), ppUAVTextures, nullptr);
         m_pImmediateContext->Dispatch(threadGroupsX, threadGroupsY, 1);
@@ -409,7 +409,7 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
         };
 
         //Tone map
-        m_pImmediateContext->CSSetShader(m_pCSToneMap.Get(), nullptr, 0);
+        m_PSOToneMap.Apply(m_pImmediateContext);
         m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVTextures), ppSRVTextures);
         m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVTextures), ppUAVTextures, nullptr);
         m_pImmediateContext->Dispatch(threadGroupsX, threadGroupsY, 1);

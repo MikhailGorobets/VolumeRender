@@ -57,13 +57,11 @@ private:
 	DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVToneMap;
 	DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVToneMap;
 
-	DX::ComPtr<ID3D11VertexShader>    m_pVSBlit;
-	DX::ComPtr<ID3D11PixelShader>     m_pPSBlit;
-
-	DX::ComPtr<ID3D11ComputeShader> m_pCSPathTracingFirstPass;
-	DX::ComPtr<ID3D11ComputeShader> m_pCSPathTracingSecondPass;
-	DX::ComPtr<ID3D11ComputeShader> m_pCSToneMap;
-
+    DX::GraphicsPSO m_PSODefault = {};
+    DX::GraphicsPSO m_PSOBlit = {};
+    DX::ComputePSO  m_PSOPathTracing = {};
+    DX::ComputePSO  m_PSOPathTracingSum = {};
+    DX::ComputePSO  m_PSOToneMap = {};
 
 	DX::ComPtr<ID3D11SamplerState>  m_pSamplerPoint;
 	DX::ComPtr<ID3D11SamplerState>  m_pSamplerLinear;

@@ -173,4 +173,38 @@ namespace DX {
 		D3D11_MAP m_MapType  = static_cast<D3D11_MAP>(-1);
 		uint32_t  m_MapFlags = static_cast<uint32_t>(-1);
 	};
+    
+    class GraphicsPSO {
+    public:
+        auto Apply(ComPtr<ID3D11DeviceContext> pDeviceContext) const -> void {
+            pDeviceContext->IASetPrimitiveTopology(PrimitiveTopology);
+            pDeviceContext->IASetInputLayout(pInputLayout.Get());
+            pDeviceContext->VSSetShader(pVS.Get(), nullptr, 0);
+            pDeviceContext->PSSetShader(pPS.Get(), nullptr, 0);
+            pDeviceContext->RSSetState(pRasterState.Get());
+            pDeviceContext->OMSetDepthStencilState(pDepthStencilState.Get(), 0);
+            pDeviceContext->OMSetBlendState(pBlendState.Get(), nullptr, BlendMask);
+        }
+
+    public:
+        ComPtr<ID3D11InputLayout>       pInputLayout = nullptr;
+        ComPtr<ID3D11VertexShader>      pVS = nullptr;
+        ComPtr<ID3D11PixelShader>       pPS = nullptr;
+        ComPtr<ID3D11RasterizerState>   pRasterState = nullptr;
+        ComPtr<ID3D11DepthStencilState> pDepthStencilState = nullptr;
+        ComPtr<ID3D11BlendState>        pBlendState = nullptr;
+        uint32_t                        BlendMask = 0xFFFFFFFF;
+        D3D11_PRIMITIVE_TOPOLOGY        PrimitiveTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
+    };
+
+    class ComputePSO {
+    public:
+        auto Apply(ComPtr<ID3D11DeviceContext> pDeviceContext) const -> void {
+            pDeviceContext->CSSetShader(pCS.Get(), nullptr, 0);
+        }
+
+    public:
+        ComPtr<ID3D11ComputeShader> pCS = nullptr;
+    };
+
 }
