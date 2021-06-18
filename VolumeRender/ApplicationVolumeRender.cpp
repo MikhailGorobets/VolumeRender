@@ -333,17 +333,8 @@ auto ApplicationVolumeRender::Blit(DX::ComPtr<ID3D11ShaderResourceView> pSrc, DX
 }
 
 auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRTV) -> void {
-    ID3D11UnorderedAccessView* ppUAVClear[] = {
-        nullptr,
-        nullptr,
-        nullptr
-    };
-
-    ID3D11ShaderResourceView* ppSRVClear[] = {
-        nullptr,
-        nullptr,
-        nullptr
-    };
+    ID3D11UnorderedAccessView* ppUAVClear[] = { nullptr, nullptr, nullptr };
+    ID3D11ShaderResourceView* ppSRVClear[] = {nullptr, nullptr, nullptr };
 
     uint32_t threadGroupsX = static_cast<uint32_t>(std::ceil(m_ApplicationDesc.Width / 8.0f));
     uint32_t threadGroupsY = static_cast<uint32_t>(std::ceil(m_ApplicationDesc.Height / 8.0f));
@@ -364,10 +355,7 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
             m_pSRVEnviroment.Get()
         };
 
-        ID3D11UnorderedAccessView* ppUAVTextures[] = {
-            m_pUAVColor.Get()
-
-        };
+        ID3D11UnorderedAccessView* ppUAVTextures[] = {  m_pUAVColor.Get() };
 
         //First pass Sample Monte Carlo
         m_PSOPathTracing.Apply(m_pImmediateContext);
@@ -381,14 +369,8 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
     }
 
     {
-        ID3D11ShaderResourceView* ppSRVTextures[] = {
-            m_pSRVColor.Get()
-        };
-
-
-        ID3D11UnorderedAccessView* ppUAVTextures[] = {
-            m_pUAVColorSum.Get()
-        };
+        ID3D11ShaderResourceView* ppSRVTextures[] = {  m_pSRVColor.Get() };
+        ID3D11UnorderedAccessView* ppUAVTextures[] = { m_pUAVColorSum.Get() };
 
         //Second pass Integrate Monte Carlo
         m_PSOPathTracingSum.Apply(m_pImmediateContext);
@@ -400,13 +382,8 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
     }
 
     {
-        ID3D11ShaderResourceView* ppSRVTextures[] = {
-            m_pSRVColorSum.Get()
-        };
-
-        ID3D11UnorderedAccessView* ppUAVTextures[] = {
-            m_pUAVToneMap.Get()
-        };
+        ID3D11ShaderResourceView* ppSRVTextures[] = { m_pSRVColorSum.Get() };
+        ID3D11UnorderedAccessView* ppUAVTextures[] = { m_pUAVToneMap.Get() };
 
         //Tone map
         m_PSOToneMap.Apply(m_pImmediateContext);

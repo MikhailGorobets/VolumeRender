@@ -16,8 +16,6 @@
 #include <d3dcompiler.h>
 #include <wrl.h>
 
-
-
 namespace DX {
     template<typename T>
     using ComPtr = Microsoft::WRL::ComPtr<T>;
@@ -206,5 +204,4 @@ namespace DX {
     public:
         ComPtr<ID3D11ComputeShader> pCS = nullptr;
     };
-
 }
