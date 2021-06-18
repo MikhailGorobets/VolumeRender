@@ -1,10 +1,7 @@
 #include "Common.hlsl"
 
-
 Texture2D<float4>   TextureHDR : register(t0);
 RWTexture2D<float4> TextureLDR : register(u0);
-
-
 
 float3 Uncharted2Function(float A, float B, float C, float D, float E, float F, float3 x) {
     return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
@@ -37,9 +34,8 @@ float3 LinearToSRGB(float3 color) {
     return sRGB;
 }
 
-
 [numthreads(8, 8, 1)]
 void ToneMap(uint3 id : SV_DispatchThreadID) {
     float3 colorHDR = TextureHDR.Load(int3(id.xy, 0)).xyz;
-    TextureLDR[id.xy] = float4(LinearToSRGB(ToneMapUncharted2Function(colorHDR, FrameBuffer.Exposure)), 1.0f);
+    TextureLDR[id.xy] = float4(ToneMapUncharted2Function(colorHDR, FrameBuffer.Exposure), 1.0f);
 }

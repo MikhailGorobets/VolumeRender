@@ -418,18 +418,24 @@ bool    ImGui_ImplDX11_CreateDeviceObjects()
         static const char* pixelShader =
             "struct PS_INPUT\
             {\
-            float4 pos : SV_POSITION;\
-            float4 col : COLOR0;\
-            float2 uv  : TEXCOORD0;\
+                float4 pos : SV_POSITION;\
+                float4 col : COLOR0;\
+                float2 uv  : TEXCOORD0;\
             };\
+            \
             sampler sampler0;\
             Texture2D texture0;\
             \
-            float4 main(PS_INPUT input) : SV_Target\
-            {\
-            float4 out_col = input.col * texture0.Sample(sampler0, input.uv); \
-            return out_col; \
+            float3 sRGBtoLinear(float3 color) { \
+                color =  max(6.10352e-5, color); \
+                return color > 0.04045 ? pow(color * (1.0 / 1.055) + 0.0521327, 2.4) : color * (1.0 / 12.92);\
+            }\
+            \
+            float4 main(PS_INPUT input): SV_Target {\
+                float4 out_col = input.col * texture0.Sample(sampler0, input.uv);\
+                return float4(sRGBtoLinear(out_col.rgb), out_col.a);\
             }";
+          
 
         ID3DBlob* pixelShaderBlob;
         if (FAILED(D3DCompile(pixelShader, strlen(pixelShader), NULL, NULL, NULL, "main", "ps_4_0", 0, 0, &pixelShaderBlob, NULL)))

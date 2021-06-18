@@ -1,0 +1,6 @@
+.vs
+.vscode
+.idea
+.DS_Store
+x64
+packages

@@ -2,6 +2,10 @@
 
 #include "Common.h"
 
+#include <Hawk/Math/Functions.hpp>
+#include <Hawk/Math/Transform.hpp>
+#include <Hawk/Math/Converters.hpp>
+
 template<uint32_t N>
 struct PiewiseFunction {
 	F32                RangeMin = -1024.0f;
@@ -15,7 +19,6 @@ template<uint32_t N = 64>
 class PiecewiseLinearFunction : PiewiseFunction<N> {
 public:
 	auto AddNode(F32 position, F32 value) -> void {
-
 		this->Position[this->Count] = position;
 		this->Value[this->Count] = value;
 		 
@@ -52,23 +55,14 @@ public:
 
 class ScalarTransferFunction1D {
 public:
+	auto AddNode(F32 position, F32 value) -> void { this->PLF.AddNode(position, value); }
 
-	auto AddNode(F32 position, F32 value) -> void {
-		this->PLF.AddNode(position, value);
-	}
-
-	auto Evaluate(F32 intensity) -> F32 {
-		return this->PLF.Evaluate(intensity);
-	}
+	auto Evaluate(F32 intensity) -> F32 { return this->PLF.Evaluate(intensity); }
 
 	auto GenerateTexture(Microsoft::WRL::ComPtr<ID3D11Device> pDevice, uint32_t sampling = 64) -> Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> {
-	
-
 		std::vector<F32> data(sampling);
 		for (auto index = 0u; index < sampling; index++)
 			data[index] = this->Evaluate(index / static_cast<F32>(sampling - 1));
-
-
 
 		D3D11_TEXTURE1D_DESC desc = {};
 		desc.Width = sampling;
@@ -87,22 +81,16 @@ public:
 		DX::ThrowIfFailed(pDevice->CreateShaderResourceView(pTexture.Get(), nullptr, pSRV.GetAddressOf()));
 
 		return pSRV;
-
 	}
 
-	auto Clear() -> void {
-		this->PLF.Clear();
-	}
-
+	auto Clear() -> void { this->PLF.Clear(); }
 
 	PiecewiseLinearFunction<> PLF;
 };
 
 class ColorTransferFunction1D {
 public:
-
 	auto AddNode(F32 position, Hawk::Math::Vec3 value) -> void {
-
 		this->PLF[0].AddNode(position, value.x);
 		this->PLF[1].AddNode(position, value.y);
 		this->PLF[2].AddNode(position, value.z);
@@ -112,16 +100,11 @@ public:
 		return  Hawk::Math::Vec3(this->PLF[0].Evaluate(intensity), this->PLF[1].Evaluate(intensity), this->PLF[2].Evaluate(intensity));
 	}
 
-
 	auto GenerateTexture(Microsoft::WRL::ComPtr<ID3D11Device> pDevice, uint32_t sampling = 64) -> Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> {
-
-	
-
 		std::vector<Hawk::Math::Vec4> data(sampling);
 		for (auto index = 0u; index < sampling; index++)
 			data[index] = Hawk::Math::Vec4(this->Evaluate(index / static_cast<F32>(sampling - 1)), 0.0f);
 		
-
 		D3D11_TEXTURE1D_DESC desc = {};
 		desc.Width = sampling;
 		desc.MipLevels = 1;
@@ -139,7 +122,6 @@ public:
 		DX::ThrowIfFailed(pDevice->CreateShaderResourceView(pTexture.Get(), nullptr, pSRV.GetAddressOf()));
 
 		return pSRV;
-
 	}
 
 	auto Clear() -> void {

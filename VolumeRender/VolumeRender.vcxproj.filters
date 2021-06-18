@@ -57,6 +57,9 @@
     <ClCompile Include="3rdParty\DirectXTex\DDSTextureLoader.cpp">
       <Filter>Исходные файлы\DirectXTex</Filter>
     </ClCompile>
+    <ClCompile Include="ApplicationVolumeRender.cpp">
+      <Filter>Исходные файлы</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Application.h">

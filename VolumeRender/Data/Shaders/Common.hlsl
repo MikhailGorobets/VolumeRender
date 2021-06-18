@@ -1,4 +1,3 @@
-
 #pragma once
 
 #pragma pack_matrix( row_major )
@@ -10,12 +9,8 @@ static const float FLT_EPSILON = 1.192092896e-07f;
 static const float FLT_MAX = 3.402823466e+38f;
 static const float FLT_MIN = 1.175494351e-38f;
 
-
-cbuffer ConstantFrameBuffer : register(b0)
-{
-    struct
-    {
-  
+cbuffer ConstantFrameBuffer : register(b0) {
+    struct {
         float4x4 ViewProjectionMatrix;
         float4x4 WorldMatrix;
         float4x4 NormalMatrix;
@@ -37,16 +32,10 @@ cbuffer ConstantFrameBuffer : register(b0)
 
         float2 FrameOffset;
         float2 RenderTargetDim;
-
-
     } FrameBuffer;
 }
 
-
-
-
-struct Ray
-{
+struct Ray {
     float3 Origin;
     float3 Direction;
     float  Min;
@@ -80,10 +69,7 @@ struct CRNG {
     uint2 Seed;
 };
 
-
-
 Intersection IntersectAABB(Ray ray, AABB aabb) {
-
     Intersection intersect;
     intersect.IsValid = false;
     intersect.Near = 0.0f;
@@ -107,7 +93,6 @@ Intersection IntersectAABB(Ray ray, AABB aabb) {
 }
 
 Ray CreateCameraRay(uint2 id, float2 offset, float2 dimension) {
-   
     float2 ncdXY = 2.0f * (id.xy + offset) / dimension - 1.0f;
     ncdXY.y *= -1.0f;
 
@@ -175,7 +160,6 @@ float3 ComputeGradientFD(Texture3D<float> volume, SamplerState samplerState, flo
     float dz = volume.SampleLevel(samplerState, texcoord + float3(0.0f, 0.0f, gradientDelta.z), 0) - p;
     return float3(dx, dy, dz);
 }
-
 
 float3 ComputeGradientFiltered(Texture3D<float> volume, SamplerState samplerState, float3 texcoord, float3 gradientDelta) {
 	

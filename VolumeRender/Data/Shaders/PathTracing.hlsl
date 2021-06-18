@@ -1,4 +1,3 @@
-
 #include "Common.hlsl"
 
 struct VolumeDesc {
@@ -7,15 +6,12 @@ struct VolumeDesc {
     float DensityScale;
 };
 
-
-
 Texture3D<float>  TextureVolumeIntensity            : register(t0);
 Texture1D<float3> TextureTransferFunctionDiffuse    : register(t1);
 Texture1D<float3> TextureTransferFunctionSpecular   : register(t2);
 Texture1D<float1> TextureTransferFunctionRoughness  : register(t3);
 Texture1D<float1> TextureTransferFunctionOpacity    : register(t4);
 Texture2D<float3> TextureEnvironment                : register(t5);
-
 
 RWTexture2D<float4> TextureColorUAV    : register(u0);
 Texture2D<float4>   TextureColorSRV    : register(t0);
@@ -24,9 +20,6 @@ RWTexture2D<float4> TextureColorSumUAV : register(u0);
 SamplerState SamplerPoint       : register(s0);
 SamplerState SamplerLinear      : register(s1);
 SamplerState SamplerAnisotropic : register(s2);
-
-
-
 
 float3x3 GetTangentSpace(float3 normal) {  
     const float3 helper = abs(normal.x) > 0.999 ? float3(0, 0, 1) : float3(1, 0, 0);
@@ -39,11 +32,9 @@ float PhaseFunctionHenyeyGreenstain(float phi, float g) {
     return (1.0f - g * g) / pow(1.0 + g * g - 2.0f * g * phi, 1.5);
 }
 
-
 float3 FresnelSchlick(float3 F0, float VdotH) {
     return F0 + (1.0f - F0) * pow(1.0 - VdotH, 5.0);
 }
-
 
 float GGX_PartialGeometry(float NdotX, float alpha) {
     const float aa = alpha * alpha;
@@ -64,7 +55,6 @@ float3 GGX_SampleHemisphere(float3 normal, float alpha, inout CRNG rng) {
     return mul(float3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta), GetTangentSpace(normal));
 }
 
-
 float3 UniformSampleHemisphere(float3 normal, inout CRNG rng){
     float2 e = float2(Rand(rng), Rand(rng));
     float phi = 2.0 * M_PI * e.x;
@@ -73,20 +63,15 @@ float3 UniformSampleHemisphere(float3 normal, inout CRNG rng){
     return mul(float3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta), GetTangentSpace(normal));
 }
 
-
-
 float3 UniformSampleSphere(inout CRNG rng) {
     float theta = 2.0f * M_PI * Rand(rng);
     float phi = acos(1.0 - 2.0 * Rand(rng));
     return float3(sin(phi) * cos(theta), sin(phi) * sin(theta), cos(phi));
 }
 
-
-
 float GetIntensity(VolumeDesc desc, float3 position) {
     return TextureVolumeIntensity.SampleLevel(SamplerLinear, GetNormalizedTexcoord(position, desc.BoundingBox), 0);
 }
-
 
 float3 GetGradient(VolumeDesc desc, float3 position) {
     int3 dimension;
@@ -94,7 +79,6 @@ float3 GetGradient(VolumeDesc desc, float3 position) {
     return ComputeGradientFiltered(TextureVolumeIntensity, SamplerLinear, GetNormalizedTexcoord(position, desc.BoundingBox), float3(1.0 / dimension.x, 1.0 / dimension.y, 1.0 / dimension.z));
 }
  
-
 float GetOpacity(VolumeDesc desc, float3 position) {
     return TextureTransferFunctionOpacity.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
 }
@@ -111,8 +95,6 @@ float GetRoughness(VolumeDesc desc, float3 position) {
     return TextureTransferFunctionRoughness.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
 }
 
-
-
 float3 GetEnvironment(float3 direction){
    const float theta = acos(direction.y) / M_PI;
    const float phi = atan2(direction.x, -direction.z) / M_PI * 0.5f;
@@ -120,10 +102,7 @@ float3 GetEnvironment(float3 direction){
    
 }
 
-
-
 ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
- 
     ScatterEvent event;
     event.IsValid = false;
     event.Normal = float3(0.0f, 0.0f, 0.0f);
@@ -147,8 +126,7 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
     float sum = 0.0f;
     float t = minT + Rand(rng) * desc.StepSize;
     float3 position = float3(0.0f, 0.0f, 0.0f);
-	
-	
+		
     while (sum < threshold) {
         position = ray.Origin + t * ray.Direction;
         if (t >= maxT)
@@ -157,8 +135,6 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
         sum += desc.DensityScale * GetOpacity(desc, position) * desc.StepSize;
         t += desc.StepSize;
     }
-
-	
 	
     float3 diffuse = GetDiffuse(desc, position);
     float3 specular = GetSpecular(desc, position);
@@ -168,11 +144,10 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
     if (length(gradient) < FLT_EPSILON) 
         return event;
     
-	
     event.IsValid = true;
     event.Normal = -normalize(gradient);
     event.Normal = dot(event.Normal, -ray.Direction) < 0.0f ? -event.Normal : event.Normal;
-    event.Position = position;
+    event.Position = position + 0.001f * event.Normal;
     event.View = -ray.Direction;
     event.Diffuse = diffuse;
     event.Specular = specular;
@@ -180,19 +155,11 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
     event.Alpha = roughness * roughness;
     event.Opacity = GetOpacity(desc, position);
 
-    return event;
-    
+    return event;  
 }
-
-
-
-
 
 [numthreads(8, 8, 1)]
 void RayTracing(uint3 id : SV_DispatchThreadID) {
-    
-   
-   
     CRNG rng = InitCRND(id.xy, FrameBuffer.FrameIndex);
     Ray ray = CreateCameraRay(id.xy, FrameBuffer.FrameOffset, FrameBuffer.RenderTargetDim);
  	
@@ -209,33 +176,25 @@ void RayTracing(uint3 id : SV_DispatchThreadID) {
     desc.DensityScale = FrameBuffer.Density;
        
     [loop]
-    for (int depth = 0; depth < FrameBuffer.TraceDepth; depth++) {
-         
+    for (int depth = 0; depth < FrameBuffer.TraceDepth; depth++) {         
         ScatterEvent event = RayMarching(ray, desc, rng);
 		
         if (!event.IsValid)  {
             radiance += (depth == 0) ? 0.0 : throughput * GetEnvironment(mul((float3x3) FrameBuffer.NormalMatrix, ray.Direction));
             break;
         }
-		
-		
+				
         const float3 N = event.Normal;
-        const float3 V = event.View;
-			
+        const float3 V = event.View;			
 		
         const float3 H = GGX_SampleHemisphere(event.Normal, event.Alpha, rng);
         const float3 F = FresnelSchlick(event.Specular, saturate(dot(V, H)));
-		
-			
+					
         const float pd = length(1 - F);
-        const float ps = length(F);
-		
+        const float ps = length(F);	
         const float pdf = ps / (ps + pd);
-		
-         
      	
 		if (Rand(rng) < pdf) {
-		
 			const float3 L = reflect(-V, H);
 			const float NdotL = saturate(dot(N, L));
 			const float NdotV = saturate(dot(N, V));
@@ -248,27 +207,18 @@ void RayTracing(uint3 id : SV_DispatchThreadID) {
 			ray.Direction = L;
             throughput *= (G * F * VdotH) / (NdotV * NdotH + M_EPSILON) / (pdf);
 		
-		} else {
-		
+		} else {		
             const float3 L = GGX_SampleHemisphere(N, 1.0, rng);
 			ray.Origin = event.Position;
 			ray.Direction = L;
-            throughput *= saturate((1 - F)) * event.Diffuse / (1 - pdf);
-		
-		}	
-      
-    
-        
+            throughput *= saturate((1 - F)) * event.Diffuse / (1 - pdf);	
+		}        
     }
+    
     TextureColorUAV[id.xy] = float4(radiance, 1.0);
-
 }
 
-
-
-
-
-[numthreads(8, 8, 1)]
+[numthreads(16, 8, 1)]
 void FrameSum(uint3 id : SV_DispatchThreadID) {
     float alpha = 1.0f / (FrameBuffer.FrameIndex + 1.0f);
     TextureColorSumUAV[id.xy] = lerp(TextureColorSumUAV[id.xy], TextureColorSRV[id.xy], float4(alpha, alpha, alpha, alpha));

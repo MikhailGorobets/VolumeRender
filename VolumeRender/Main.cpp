@@ -5,12 +5,11 @@ int main(int argc, char* argv[]) {
 
 	try {
 		auto appDesc = ApplicationDesc{};
-		appDesc.Width = 1600;
-		appDesc.Height = 1000;
+		appDesc.Width = 1920;
+		appDesc.Height = 1280;
 		appDesc.Tittle = "Application VolumeRender <DX11>";
 		appDesc.IsFullScreen = false;
-		
-		
+				
 		auto pAppication = std::make_unique<ApplicationVolumeRender>(appDesc);
 		pAppication->Run();
 	} catch (std::exception const& e) {
@@ -18,6 +17,3 @@ int main(int argc, char* argv[]) {
 		assert(0);
 	}
 }
-
-
-
