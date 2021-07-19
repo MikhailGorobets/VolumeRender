@@ -1,7 +1,33 @@
+/*
+ * MIT License
+ *
+ * Copyright(c) 2021 Mikhail Gorobets
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this softwareand associated documentation files(the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and /or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions :
+ *
+ * The above copyright noticeand this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 #include "ApplicationVolumeRender.h"
 #include <DirectXTex/DDSTextureLoader.h>
 #include <ImGui/imgui.h>
 #include <nlohmann/json.hpp>
+#include <optional>
+#include <span>
 
 struct FrameBuffer {
     Hawk::Math::Mat4x4 ViewProjectionMatrix;
@@ -42,20 +68,30 @@ ApplicationVolumeRender::ApplicationVolumeRender(ApplicationDesc const& desc)
 }
 
 auto ApplicationVolumeRender::InitializeShaders() -> void {
-    auto compileShader = [](auto fileName, auto entrypoint, auto target) -> DX::ComPtr<ID3DBlob> {
+   
+    auto compileShader = [](auto fileName, auto entrypoint, auto target, auto macros) -> DX::ComPtr<ID3DBlob> {
         DX::ComPtr<ID3DBlob> pCodeBlob;
         DX::ComPtr<ID3DBlob> pErrorBlob;
-
-        if (FAILED(D3DCompileFromFile(fileName, nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, entrypoint, target, 0, 0, pCodeBlob.GetAddressOf(), pErrorBlob.GetAddressOf())))
+      
+        if (FAILED(D3DCompileFromFile(fileName, macros, D3D_COMPILE_STANDARD_FILE_INCLUDE, entrypoint, target, 0, 0, pCodeBlob.GetAddressOf(), pErrorBlob.GetAddressOf())))
             throw std::runtime_error(static_cast<const char*>(pErrorBlob->GetBufferPointer()));
         return pCodeBlob;
     };
 
-    auto pBlobCSPathTracing = compileShader(L"Data/Shaders/PathTracing.hlsl", "RayTracing", "cs_5_0");
-    auto pBlobCSPathTracingSum = compileShader(L"Data/Shaders/PathTracing.hlsl", "FrameSum", "cs_5_0");
-    auto pBlobCSToneMap = compileShader(L"Data/Shaders/ToneMap.hlsl", "ToneMap", "cs_5_0");
-    auto pBlobVSBlit = compileShader(L"Data/Shaders/Blitting.hlsl", "BlitVS", "vs_5_0");
-    auto pBlobPSBlit = compileShader(L"Data/Shaders/Blitting.hlsl", "BlitPS", "ps_5_0");
+    std::string threadSizeX = std::to_string(m_ThreadSizeDimensionX);
+    std::string threadSizeY = std::to_string(m_ThreadSizeDimensionY);
+
+    D3D_SHADER_MACRO macros[] = {
+        {"THREAD_GROUP_SIZE_X", threadSizeX.c_str()},
+        {"THREAD_GROUP_SIZE_Y", threadSizeY.c_str()},
+        { nullptr, nullptr}
+    }; 
+
+    auto pBlobCSPathTracing = compileShader(L"Data/Shaders/PathTracing.hlsl", "RayTracing", "cs_5_0", macros);
+    auto pBlobCSPathTracingSum = compileShader(L"Data/Shaders/PathTracing.hlsl", "FrameSum", "cs_5_0", macros);
+    auto pBlobCSToneMap = compileShader(L"Data/Shaders/ToneMap.hlsl", "ToneMap", "cs_5_0", macros);
+    auto pBlobVSBlit = compileShader(L"Data/Shaders/Blitting.hlsl", "BlitVS", "vs_5_0", nullptr);
+    auto pBlobPSBlit = compileShader(L"Data/Shaders/Blitting.hlsl", "BlitPS", "ps_5_0", nullptr);
 
     DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSPathTracing->GetBufferPointer(), pBlobCSPathTracing->GetBufferSize(), nullptr, m_PSOPathTracing.pCS.ReleaseAndGetAddressOf()));
     DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSPathTracingSum->GetBufferPointer(), pBlobCSPathTracingSum->GetBufferSize(), nullptr, m_PSOPathTracingSum.pCS.ReleaseAndGetAddressOf()));
@@ -305,10 +341,11 @@ auto ApplicationVolumeRender::Update(float deltaTime) -> void {
 
 auto ApplicationVolumeRender::Blit(DX::ComPtr<ID3D11ShaderResourceView> pSrc, DX::ComPtr<ID3D11RenderTargetView> pDst)-> void {
     ID3D11ShaderResourceView* ppSRVClear[] = { nullptr, nullptr, nullptr, nullptr,  nullptr, nullptr, nullptr, nullptr };
-
+    D3D11_VIEWPORT viewport = {0.0f, 0.0f, static_cast<float>(m_ApplicationDesc.Width), static_cast<float>(m_ApplicationDesc.Height), 0.0f, 1.0f};
+    
     // Set RTVs
     m_pImmediateContext->OMSetRenderTargets(1, pDst.GetAddressOf(), nullptr);
-    m_pImmediateContext->RSSetViewports(1, &CD3D11_VIEWPORT{ 0.0f, 0.0f, static_cast<float>(m_ApplicationDesc.Width), static_cast<float>(m_ApplicationDesc.Height), 0.0f, 1.0f });
+    m_pImmediateContext->RSSetViewports(1, &viewport);
 
     // Bind PSO and Resources
     m_PSOBlit.Apply(m_pImmediateContext);
@@ -333,14 +370,14 @@ auto ApplicationVolumeRender::RenderFrame(
     ID3D11UnorderedAccessView* ppUAVClear[] = { nullptr, nullptr, nullptr };
     ID3D11ShaderResourceView* ppSRVClear[] = { nullptr, nullptr, nullptr };
 
-    uint32_t threadGroupsX = static_cast<uint32_t>(std::ceil(m_ApplicationDesc.Width / 8.0f));
-    uint32_t threadGroupsY = static_cast<uint32_t>(std::ceil(m_ApplicationDesc.Height / 8.0f));
+    uint32_t threadGroupsX = static_cast<uint32_t>(std::ceil(m_ApplicationDesc.Width  / static_cast<float>(m_ThreadSizeDimensionX)));
+    uint32_t threadGroupsY = static_cast<uint32_t>(std::ceil(m_ApplicationDesc.Height / static_cast<float>(m_ThreadSizeDimensionY)));
 
     {
         ID3D11SamplerState* ppSamplers[] = {
             m_pSamplerPoint.Get(),
             m_pSamplerLinear.Get(),
-           m_pSamplerAnisotropic.Get()
+            m_pSamplerAnisotropic.Get()
         };
 
         ID3D11ShaderResourceView* ppSRVTextures[] = {
