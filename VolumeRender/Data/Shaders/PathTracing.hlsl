@@ -151,7 +151,7 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
     float t = minT + Rand(rng) * desc.StepSize;
     float3 position = float3(0.0f, 0.0f, 0.0f);
 		
-   [loop]
+    [loop]
     while (sum < threshold) {
         position = ray.Origin + t * ray.Direction;
         [branch]

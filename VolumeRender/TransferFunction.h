@@ -83,16 +83,16 @@ public:
     auto Evaluate(F32 intensity) -> F32 { return this->PLF.Evaluate(intensity); }
 
     auto GenerateTexture(Microsoft::WRL::ComPtr<ID3D11Device> pDevice, uint32_t sampling = 64) -> Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> {
-        std::vector<F32> data(sampling);
+        std::vector<uint16_t> data(sampling);
         for (auto index = 0u; index < sampling; index++)
-            data[index] = this->Evaluate(index / static_cast<F32>(sampling - 1));
+            data[index] = static_cast<uint16_t>(std::ceil(std::numeric_limits<uint16_t>::max() * this->Evaluate(index / static_cast<F32>(sampling - 1))));
 
         D3D11_TEXTURE1D_DESC desc = {};
         desc.Width = sampling;
         desc.MipLevels = 1;
         desc.ArraySize = 1;
         desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-        desc.Format = DXGI_FORMAT_R32_FLOAT;
+        desc.Format = DXGI_FORMAT_R16_UNORM;
         desc.Usage = D3D11_USAGE_IMMUTABLE;
 
         D3D11_SUBRESOURCE_DATA initData = {};
@@ -120,20 +120,25 @@ public:
     }
 
     auto Evaluate(F32 intensity) ->  Hawk::Math::Vec3 {
-        return  Hawk::Math::Vec3(this->PLF[0].Evaluate(intensity), this->PLF[1].Evaluate(intensity), this->PLF[2].Evaluate(intensity));
+        return Hawk::Math::Vec3(this->PLF[0].Evaluate(intensity), this->PLF[1].Evaluate(intensity), this->PLF[2].Evaluate(intensity));
     }
 
     auto GenerateTexture(Microsoft::WRL::ComPtr<ID3D11Device> pDevice, uint32_t sampling = 64) -> Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> {
-        std::vector<Hawk::Math::Vec4> data(sampling);
-        for (auto index = 0u; index < sampling; index++)
-            data[index] = Hawk::Math::Vec4(this->Evaluate(index / static_cast<F32>(sampling - 1)), 0.0f);
-
+        std::vector<Hawk::Math::Vector<uint16_t, 4>> data(sampling);
+        for (auto index = 0u; index < sampling; index++) {
+            Hawk::Math::Vec3 v = this->Evaluate(index / static_cast<F32>(sampling - 1));
+            uint16_t x = static_cast<uint16_t>(std::ceil(std::numeric_limits<uint16_t>::max() * v.x));
+            uint16_t y = static_cast<uint16_t>(std::ceil(std::numeric_limits<uint16_t>::max() * v.y));
+            uint16_t z = static_cast<uint16_t>(std::ceil(std::numeric_limits<uint16_t>::max() * v.z));
+            data[index] = Hawk::Math::Vector<uint16_t, 4>( x, y, z, static_cast<uint16_t>(0));
+        }
+         
         D3D11_TEXTURE1D_DESC desc = {};
         desc.Width = sampling;
         desc.MipLevels = 1;
         desc.ArraySize = 1;
         desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-        desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        desc.Format = DXGI_FORMAT_R16G16B16A16_UNORM;
         desc.Usage = D3D11_USAGE_IMMUTABLE;
 
         D3D11_SUBRESOURCE_DATA initData = {};

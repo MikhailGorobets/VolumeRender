@@ -24,6 +24,8 @@
 
 #pragma once
 
+#define NOMINMAX
+
 #include <vector>
 #include <string>
 #include <chrono>

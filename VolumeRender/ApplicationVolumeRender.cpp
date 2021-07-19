@@ -26,8 +26,6 @@
 #include <DirectXTex/DDSTextureLoader.h>
 #include <ImGui/imgui.h>
 #include <nlohmann/json.hpp>
-#include <optional>
-#include <span>
 
 struct FrameBuffer {
     Hawk::Math::Mat4x4 ViewProjectionMatrix;
@@ -73,7 +71,7 @@ auto ApplicationVolumeRender::InitializeShaders() -> void {
         DX::ComPtr<ID3DBlob> pCodeBlob;
         DX::ComPtr<ID3DBlob> pErrorBlob;
       
-        if (FAILED(D3DCompileFromFile(fileName, macros, D3D_COMPILE_STANDARD_FILE_INCLUDE, entrypoint, target, 0, 0, pCodeBlob.GetAddressOf(), pErrorBlob.GetAddressOf())))
+        if (FAILED(D3DCompileFromFile(fileName, macros, D3D_COMPILE_STANDARD_FILE_INCLUDE, entrypoint, target, D3DCOMPILE_PREFER_FLOW_CONTROL | D3DCOMPILE_ENABLE_STRICTNESS, 0, pCodeBlob.GetAddressOf(), pErrorBlob.GetAddressOf())))
             throw std::runtime_error(static_cast<const char*>(pErrorBlob->GetBufferPointer()));
         return pCodeBlob;
     };
@@ -105,52 +103,50 @@ auto ApplicationVolumeRender::InitializeShaders() -> void {
 auto ApplicationVolumeRender::InitializeVolumeTexture() -> void {
     std::ifstream file("Data/Textures/manix.dat", std::ifstream::binary);
     if (!file.is_open())
-        throw std::runtime_error("Failed to open file: " +
-            std::string("Data/Textures/manix.dat"));
+        throw std::runtime_error("Failed to open file: " + std::string("Data/Textures/manix.dat"));
 
     file.read(reinterpret_cast<char*>(&m_DimensionX), sizeof(uint16_t));
     file.read(reinterpret_cast<char*>(&m_DimensionY), sizeof(uint16_t));
     file.read(reinterpret_cast<char*>(&m_DimensionZ), sizeof(uint16_t));
 
     std::vector<uint16_t> data(size_t(m_DimensionX) * size_t(m_DimensionY) * size_t(m_DimensionZ));
-    std::vector<F32> intensity(size_t(m_DimensionX) * size_t(m_DimensionY) * size_t(m_DimensionZ));
+    std::vector<uint16_t> intensity(size_t(m_DimensionX) * size_t(m_DimensionY) * size_t(m_DimensionZ));
 
-    uint16_t tmin = (std::numeric_limits<uint16_t>::max)();
-    uint16_t tmax = (std::numeric_limits<uint16_t>::min)();
+    uint16_t tmin = std::numeric_limits<uint16_t>::max();
+    uint16_t tmax = std::numeric_limits<uint16_t>::min();
 
     auto t1 = std::chrono::high_resolution_clock::now();
     for (auto index = 0u; index < std::size(data); index++) {
         file.read(reinterpret_cast<char*>(&data[index]), sizeof(uint16_t));
-        tmin = (std::min)(tmin, data[index]);
-        tmax = (std::max)(tmax, data[index]);
+        tmin = std::min(tmin, data[index]);
+        tmax = std::max(tmax, data[index]);
     }
 
     auto t2 = std::chrono::high_resolution_clock::now();
-    auto duration =
-        std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
 
-    for (auto index = 0u; index < std::size(intensity); index++)
-        intensity[index] = (data[index] - tmin) / static_cast<F32>(tmax - tmin);
-
+    for (size_t index = 0u; index < std::size(intensity); index++) {
+       intensity[index] = static_cast<uint16_t>(std::ceil(std::numeric_limits<uint16_t>::max() * ((data[index] - tmin) / static_cast<F32>(tmax - tmin))));
+    }
+       
     {
         D3D11_TEXTURE3D_DESC desc = {};
         desc.Width = m_DimensionX;
         desc.Height = m_DimensionY;
         desc.Depth = m_DimensionZ;
-        desc.Format = DXGI_FORMAT_R32_FLOAT;
+        desc.Format = DXGI_FORMAT_R16_UNORM;
         desc.MipLevels = 1;
-        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
         desc.Usage = D3D11_USAGE_DEFAULT;
 
         D3D11_SUBRESOURCE_DATA resourceData = {};
         resourceData.pSysMem = std::data(intensity);
-        resourceData.SysMemPitch = sizeof(F32) * desc.Width;
-        resourceData.SysMemSlicePitch = sizeof(F32) * desc.Height * desc.Width;
+        resourceData.SysMemPitch = sizeof(uint16_t) * desc.Width;
+        resourceData.SysMemSlicePitch = sizeof(uint16_t) * desc.Height * desc.Width;
 
         Microsoft::WRL::ComPtr<ID3D11Texture3D> pTextureIntensity;
         DX::ThrowIfFailed(m_pDevice->CreateTexture3D(&desc, &resourceData, pTextureIntensity.GetAddressOf()));
         DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureIntensity.Get(), nullptr, m_pSRVVolumeIntensity.GetAddressOf()));
-        DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureIntensity.Get(), nullptr, m_pUAVVolumeIntensity.GetAddressOf()));
     }
 }
 
@@ -167,19 +163,19 @@ auto ApplicationVolumeRender::InitializeTransferFunction() -> void {
 
     auto ExtractVec3FromJson = [](auto const& tree, auto const& key) -> Hawk::Math::Vec3 {
         Hawk::Math::Vec3 v{};
-        auto index = 0;
+        uint32_t index = 0;
         for (auto& e : tree[key]) {
-            v[index] = e.get<F32>();
+            v[index] = e.get<float>();
             index++;
         }
         return v;
     };
 
     for (auto const& e : root["NodesColor"]) {
-        auto intensity = e["Intensity"].get<F32>();
+        auto intensity = e["Intensity"].get<float>();
         auto diffuse = ExtractVec3FromJson(e, "Diffuse");
         auto specular = ExtractVec3FromJson(e, "Specular");
-        auto roughness = e["Roughness"].get<F32>();
+        auto roughness = e["Roughness"].get<float>();
 
         m_DiffuseTransferFunc.AddNode(intensity, diffuse);
         m_SpecularTransferFunc.AddNode(intensity, specular);
@@ -225,7 +221,7 @@ auto ApplicationVolumeRender::InitializeRenderTextures() -> void {
         D3D11_TEXTURE2D_DESC desc = {};
         desc.ArraySize = 1;
         desc.MipLevels = 1;
-        desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        desc.Format = DXGI_FORMAT_R11G11B10_FLOAT;
         desc.Width = m_ApplicationDesc.Width;
         desc.Height = m_ApplicationDesc.Height;
         desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
@@ -241,7 +237,7 @@ auto ApplicationVolumeRender::InitializeRenderTextures() -> void {
         D3D11_TEXTURE2D_DESC desc = {};
         desc.ArraySize = 1;
         desc.MipLevels = 1;
-        desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        desc.Format = DXGI_FORMAT_R32G32B32A32_UINT;
         desc.Width = m_ApplicationDesc.Width;
         desc.Height = m_ApplicationDesc.Height;
         desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
@@ -307,13 +303,13 @@ auto ApplicationVolumeRender::Update(float deltaTime) -> void {
         std::cout << e.what() << std::endl;
     }
 
-    auto scaleVector = Hawk::Math::Vec3(0.488f * m_DimensionX, 0.488f * m_DimensionY, 0.7f * m_DimensionZ);
+    Hawk::Math::Vec3 scaleVector = { 0.488f * m_DimensionX, 0.488f * m_DimensionY, 0.7f * m_DimensionZ };
     scaleVector /= (std::max)({ scaleVector.x, scaleVector.y, scaleVector.z });
 
     auto const& matrixView = m_Camera.ToMatrix();
-    auto matrixProjection = Hawk::Math::Orthographic(m_Zoom * (m_ApplicationDesc.Width / static_cast<F32>(m_ApplicationDesc.Height)), m_Zoom, -2.0f, 2.0f);
-    auto matrixWorld = Hawk::Math::RotateX(Hawk::Math::Radians(-90.0f));
-    auto matrixNormal = Hawk::Math::Inverse(Hawk::Math::Transpose(matrixWorld));
+    Hawk::Math::Mat4x4 matrixProjection = Hawk::Math::Orthographic(m_Zoom * (m_ApplicationDesc.Width / static_cast<F32>(m_ApplicationDesc.Height)), m_Zoom, -2.0f, 2.0f);
+    Hawk::Math::Mat4x4 matrixWorld  = Hawk::Math::RotateX(Hawk::Math::Radians(-90.0f));
+    Hawk::Math::Mat4x4 matrixNormal = Hawk::Math::Inverse(Hawk::Math::Transpose(matrixWorld));
 
     {
         DX::MapHelper<FrameBuffer> map(m_pImmediateContext, m_pCBFrame, D3D11_MAP_WRITE_DISCARD, 0);
@@ -381,9 +377,13 @@ auto ApplicationVolumeRender::RenderFrame(
         };
 
         ID3D11ShaderResourceView* ppSRVTextures[] = {
-            m_pSRVVolumeIntensity.Get(), m_pSRVDiffuseTF.Get(),
-            m_pSRVSpecularTF.Get(),      m_pSRVRoughnessTF.Get(),
-            m_pSRVOpasityTF.Get(),       m_pSRVEnviroment.Get() };
+            m_pSRVVolumeIntensity.Get(),
+            m_pSRVDiffuseTF.Get(),
+            m_pSRVSpecularTF.Get(),      
+            m_pSRVRoughnessTF.Get(),
+            m_pSRVOpasityTF.Get(),       
+            m_pSRVEnviroment.Get() 
+        };
 
         ID3D11UnorderedAccessView* ppUAVTextures[] = { m_pUAVColor.Get() };
 

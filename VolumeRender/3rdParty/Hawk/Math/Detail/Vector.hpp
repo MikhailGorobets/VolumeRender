@@ -52,7 +52,7 @@ namespace Hawk {
 
 			template<typename T>
 			class Vector<T, 4> final : public INumberArray<T, 4> {
-				static_assert(std::is_same<T, F32>() || std::is_same<T, F64>() || std::is_same<T, I32>() || std::is_same<T, U32>(), "Invalid scalar type for Vector");
+				static_assert(std::is_same<T, F32>() || std::is_same<T, F64>() || std::is_same<T, I32>() || std::is_same<T, U32>() || std::is_same<T, I16>() || std::is_same<T, U16>(), "Invalid scalar type for Vector");
 			public:
 				union {
 					struct { T x, y, z, w; };

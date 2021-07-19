@@ -63,7 +63,6 @@ private:
     auto RenderGUI(DX::ComPtr<ID3D11RenderTargetView> pRTV) -> void override;
 
 private:
-    DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVVolumeIntensity;
     DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVVolumeIntensity;
 
     DX::ComPtr<ID3D11ShaderResourceView> m_pSRVDiffuseTF;
