@@ -191,7 +191,6 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
 }
 
 
-
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, 1)]
 void RayTrace(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID) {
     uint2 id = GetThreadIDFromTileList(BufferDispersionTiles, groupID.x, thredID.xy);
@@ -202,7 +201,7 @@ void RayTrace(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID) {
     float3 radiance = { 0.0f, 0.0f, 0.0f };
     float3 throughput = { 1.0f, 1.0f, 1.0f };
     float3 normal = { 0.0f, 0.0f, 0.0f };
-    float1 depth = { 0.0f };
+    float4 position = { 0.0f, 0.0f, 0.0f, 0.0f };
 
     VolumeDesc desc;
     desc.BoundingBox.Min = FrameBuffer.BoundingBoxMin;
@@ -221,7 +220,7 @@ void RayTrace(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID) {
 				
         if (bounce == 0 && event.IsValid) {
             normal = event.Normal;
-            depth = event.Position.z;
+            position = float4(event.Position, 1.0);
         }
         
         const float3 N = event.Normal;
@@ -255,9 +254,12 @@ void RayTrace(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID) {
         }
     }
     
-    
+    normal = mul((float3x3)FrameBuffer.NormalViewMatrix, normal);
+    position = mul(FrameBuffer.WorldViewProjectionMatrix, position);
+    position /= position.w;
+   
     TextureColorUAV[id] = radiance;
-    TextureNormalUAV[id] = mul((float3x3)FrameBuffer.NormalViewMatrix, normal);
-    TextureDepthUAV[id] = depth;
+    TextureNormalUAV[id] = normal;
+    TextureDepthUAV[id] = position.z;
 }
 
