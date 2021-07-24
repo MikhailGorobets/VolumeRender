@@ -218,6 +218,7 @@ namespace DX {
             pDeviceContext->IASetPrimitiveTopology(PrimitiveTopology);
             pDeviceContext->IASetInputLayout(pInputLayout.Get());
             pDeviceContext->VSSetShader(pVS.Get(), nullptr, 0);
+            pDeviceContext->GSSetShader(pGS.Get(), nullptr, 0);
             pDeviceContext->PSSetShader(pPS.Get(), nullptr, 0);
             pDeviceContext->RSSetState(pRasterState.Get());
             pDeviceContext->OMSetDepthStencilState(pDepthStencilState.Get(), 0);
@@ -227,7 +228,8 @@ namespace DX {
     public:
         ComPtr<ID3D11InputLayout>       pInputLayout = nullptr;
         ComPtr<ID3D11VertexShader>      pVS = nullptr;
-        ComPtr<ID3D11PixelShader>       pPS = nullptr;
+        ComPtr<ID3D11GeometryShader>    pGS = nullptr;
+        ComPtr<ID3D11PixelShader>       pPS = nullptr;    
         ComPtr<ID3D11RasterizerState>   pRasterState = nullptr;
         ComPtr<ID3D11DepthStencilState> pDepthStencilState = nullptr;
         ComPtr<ID3D11BlendState>        pBlendState = nullptr;

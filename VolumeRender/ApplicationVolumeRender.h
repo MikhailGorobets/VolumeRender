@@ -75,7 +75,7 @@ private:
 
     DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVColor;
     DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVNormal;
-    DX::ComPtr<ID3D11ShaderResourceView>  m_SRVDepth;
+    DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVDepth;
     DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVColorSum;
 
     DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVColor;
@@ -91,6 +91,7 @@ private:
 
     DX::GraphicsPSO m_PSODefault = {};
     DX::GraphicsPSO m_PSOBlit = {};
+    DX::GraphicsPSO m_PSODegugTiles = {};
     DX::ComputePSO  m_PSORayTrace = {};
     DX::ComputePSO  m_PSOAccumulate = {};
     DX::ComputePSO  m_PSODispersion = {};
@@ -101,7 +102,8 @@ private:
     DX::ComPtr<ID3D11SamplerState>  m_pSamplerAnisotropic;
 
     DX::ComPtr<ID3D11Buffer> m_pConstantBufferFrame;
-    DX::ComPtr<ID3D11Buffer> m_pIndirectBufferArgs;
+    DX::ComPtr<ID3D11Buffer> m_pDispathIndirectBufferArgs;
+    DX::ComPtr<ID3D11Buffer> m_pDrawInstancedIndirectBufferArgs;
 
     ColorTransferFunction1D  m_DiffuseTransferFunc;
     ColorTransferFunction1D  m_SpecularTransferFunc;
@@ -124,10 +126,12 @@ private:
     uint32_t m_TraceDepth = 2;
     uint32_t m_StepCount = 180;
     uint32_t m_FrameIndex = 0;
+    uint32_t m_SampleDispersion = 16;
     uint32_t m_SamplingCount = 256;
 
     bool     m_IsReloadShader = false;
     bool     m_IsReloadTranferFunc = false;
+    bool     m_IsDrawDegugTiles = false;
 
     uint16_t m_DimensionX = 0;
     uint16_t m_DimensionY = 0;
