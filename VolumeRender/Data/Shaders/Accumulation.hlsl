@@ -22,47 +22,15 @@
  * SOFTWARE.
  */
 
-
 #include "Common.hlsl"
 
-Texture2D<float4>   TextureHDR : register(t0);
-RWTexture2D<float4> TextureLDR : register(u0);
+Texture2D<float3> TextureColorSRV: register(t0);
 StructuredBuffer<uint> BufferDispersionTiles: register(t1);
-
-float3 Uncharted2Function(float A, float B, float C, float D, float E, float F, float3 x) {
-    return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
-}
-
-float3 ToneMapUncharted2Function(float3 x, float exposure) {
-    const float A = 0.15;
-    const float B = 0.50;
-    const float C = 0.10;
-    const float D = 0.20;
-    const float E = 0.02;
-    const float F = 0.30;
-    const float W = 11.2;
-
-    float3 numerator   = Uncharted2Function(A, B, C, D, E, F, x) * exposure;
-    float3 denominator = Uncharted2Function(A, B, C, D, E, F, W);
-
-    return numerator / denominator;
-
-}
-
-float3 LinearToSRGB(float3 color) {
-    float3 sRGBLo = color * 12.92;
-    const float powExp = 1.0 / 2.2f;
-    float3 sRGBHi = (pow(abs(color), float3(powExp, powExp, powExp)) * 1.055) - 0.055;
-    float3 sRGB;
-    sRGB.x = (color.x <= 0.0031308) ? sRGBLo.x : sRGBHi.x;
-    sRGB.y = (color.y <= 0.0031308) ? sRGBLo.y : sRGBHi.y;
-    sRGB.z = (color.z <= 0.0031308) ? sRGBLo.z : sRGBHi.z;
-    return sRGB;
-}
+RWTexture2D<float4> TextureColorSumUAV: register(u0);
 
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, 1)]
-void ToneMap(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID) {
+void Accumulate(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID) {
     uint2 id = GetThreadIDFromTileList(BufferDispersionTiles, groupID.x, thredID.xy);
-    float3 colorHDR = TextureHDR.Load(int3(id.xy, 0)).xyz;
-    TextureLDR[id] = float4(ToneMapUncharted2Function(colorHDR, FrameBuffer.Exposure), 1.0f);
+    float alpha = 1.0f / (FrameBuffer.FrameIndex + 1.0f);
+    TextureColorSumUAV[id] = lerp(TextureColorSumUAV[id], float4(TextureColorSRV[id].xyz, 1.0), float4(alpha, alpha, alpha, alpha));
 }

@@ -30,20 +30,24 @@ struct VolumeDesc {
     float DensityScale;
 };
 
-Texture3D<float> TextureVolumeIntensity : register(t0);
-Texture1D<float3> TextureTransferFunctionDiffuse : register(t1);
-Texture1D<float3> TextureTransferFunctionSpecular : register(t2);
-Texture1D<float1> TextureTransferFunctionRoughness : register(t3);
-Texture1D<float1> TextureTransferFunctionOpacity : register(t4);
-Texture2D<float3> TextureEnvironment : register(t5);
+Texture3D<float>  TextureVolumeIntensity: register(t0);
+Texture1D<float3> TextureTransferFunctionDiffuse: register(t1);
+Texture1D<float3> TextureTransferFunctionSpecular: register(t2);
+Texture1D<float1> TextureTransferFunctionRoughness: register(t3);
+Texture1D<float1> TextureTransferFunctionOpacity: register(t4);
+Texture2D<float3> TextureEnvironment: register(t5);
+StructuredBuffer<uint> BufferDispersionTiles: register(t6);
 
-RWTexture2D<float4> TextureColorUAV : register(u0);
-Texture2D<float4> TextureColorSRV : register(t0);
-RWTexture2D<float4> TextureColorSumUAV : register(u0);
+RWTexture2D<float3> TextureColorUAV: register(u0);
+RWTexture2D<float3> TextureNormalUAV: register(u1);
+RWTexture2D<float>  TextureDepthUAV: register(u2);
 
-SamplerState SamplerPoint : register(s0);
-SamplerState SamplerLinear : register(s1);
-SamplerState SamplerAnisotropic : register(s2);
+Texture2D<float3>   TextureColorSRV: register(t0);
+RWTexture2D<float4> TextureColorSumUAV: register(u0);
+
+SamplerState SamplerPoint: register(s0);
+SamplerState SamplerLinear: register(s1);
+SamplerState SamplerAnisotropic: register(s2);
 
 float3x3 GetTangentSpace(float3 normal) {
     const float3 helper = abs(normal.x) > 0.999 ? float3(0, 0, 1) : float3(1, 0, 0);
@@ -115,18 +119,19 @@ float3 GetSpecular(VolumeDesc desc, float3 position) {
     return TextureTransferFunctionSpecular.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
 }
 
-float GetRoughness(VolumeDesc desc, float3 position) {
+float GetRoughness(VolumeDesc desc, float3 position)
+{
     return TextureTransferFunctionRoughness.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
 }
 
 float3 GetEnvironment(float3 direction) {
     const float theta = acos(direction.y) / M_PI;
     const float phi = atan2(direction.x, -direction.z) / M_PI * 0.5f;
-    return TextureEnvironment.SampleLevel(SamplerAnisotropic, float2(phi, theta), 0);  
+    return TextureEnvironment.SampleLevel(SamplerAnisotropic, float2(phi, theta), 0);
 }
 
 ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
-    ScatterEvent event;  
+    ScatterEvent event;
     event.Position = float3(0.0f, 0.0f, 0.0f);
     event.Normal = float3(0.0f, 0.0f, 0.0f);
     event.View = float3(0.0f, 0.0f, 0.0f);
@@ -162,10 +167,10 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
         t += desc.StepSize;
     }
 	
-    float3 diffuse = GetDiffuse(desc, position);
-    float3 specular = GetSpecular(desc, position);
-    float roughness = GetRoughness(desc, position);
-    float3 gradient = GetGradient(desc, position);
+    const float3 diffuse = GetDiffuse(desc, position);
+    const float3 specular = GetSpecular(desc, position);
+    const float  roughness = GetRoughness(desc, position);
+    const float3 gradient = GetGradient(desc, position);
 	
     [branch]
     if (length(gradient) < FLT_EPSILON) 
@@ -185,16 +190,19 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
     return event;
 }
 
+
+
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, 1)]
-void RayTracing(uint3 id : SV_DispatchThreadID) {
-    CRNG rng = InitCRND(id.xy, FrameBuffer.FrameIndex);
-    Ray ray = CreateCameraRay(id.xy, FrameBuffer.FrameOffset, FrameBuffer.RenderTargetDim);
- 	
-    ray.Origin = mul(FrameBuffer.InvWorldMatrix, float4(ray.Origin, 1.0)).xyz;
-    ray.Direction = mul((float3x3) FrameBuffer.InvNormalMatrix, ray.Direction);
+void RayTrace(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID) {
+    uint2 id = GetThreadIDFromTileList(BufferDispersionTiles, groupID.x, thredID.xy);
     
+    CRNG rng = InitCRND(id, FrameBuffer.FrameIndex);
+    Ray ray = CreateCameraRay(id, FrameBuffer.FrameOffset, FrameBuffer.RenderTargetDim);
+ 	
     float3 radiance = { 0.0f, 0.0f, 0.0f };
     float3 throughput = { 1.0f, 1.0f, 1.0f };
+    float3 normal = { 0.0f, 0.0f, 0.0f };
+    float1 depth = { 0.0f };
 
     VolumeDesc desc;
     desc.BoundingBox.Min = FrameBuffer.BoundingBoxMin;
@@ -202,15 +210,20 @@ void RayTracing(uint3 id : SV_DispatchThreadID) {
     desc.StepSize = distance(desc.BoundingBox.Min, desc.BoundingBox.Max) / FrameBuffer.StepCount;
     desc.DensityScale = FrameBuffer.Density;
        
-    for (uint depth = 0; depth < FrameBuffer.TraceDepth; depth++) {
+    for (uint bounce = 0; bounce < FrameBuffer.TraceDepth; bounce++) {
         ScatterEvent event = RayMarching(ray, desc, rng);
 		
         [branch]
         if (!event.IsValid) {
-            radiance += (depth == 0) ? 0.0 : throughput * GetEnvironment(mul((float3x3) FrameBuffer.NormalMatrix, ray.Direction));
+            radiance += (bounce == 0) ? 0.0 : throughput * GetEnvironment(mul((float3x3)FrameBuffer.NormalMatrix, ray.Direction));
             break;
         }
 				
+        if (bounce == 0 && event.IsValid) {
+            normal = event.Normal;
+            depth = event.Position.z;
+        }
+        
         const float3 N = event.Normal;
         const float3 V = event.View;
 		
@@ -242,11 +255,9 @@ void RayTracing(uint3 id : SV_DispatchThreadID) {
         }
     }
     
-    TextureColorUAV[id.xy] = float4(radiance, 1.0);
+    
+    TextureColorUAV[id] = radiance;
+    TextureNormalUAV[id] = mul((float3x3)FrameBuffer.NormalViewMatrix, normal);
+    TextureDepthUAV[id] = depth;
 }
 
-[numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, 1)]
-void FrameSum(uint3 id : SV_DispatchThreadID) {
-    float alpha = 1.0f / (FrameBuffer.FrameIndex + 1.0f);
-    TextureColorSumUAV[id.xy] = lerp(TextureColorSumUAV[id.xy], TextureColorSRV[id.xy], float4(alpha, alpha, alpha, alpha));
-}

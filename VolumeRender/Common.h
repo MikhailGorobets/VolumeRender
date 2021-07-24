@@ -78,6 +78,21 @@ namespace DX {
     }
 
     template<typename T>
+    auto CreateIndirectBuffer(ComPtr<ID3D11Device> pDevice, const T* pInitialData = nullptr) -> Microsoft::WRL::ComPtr<ID3D11Buffer> {
+        ComPtr<ID3D11Buffer> pBuffer;
+        D3D11_BUFFER_DESC desc = {};
+        desc.ByteWidth = sizeof(T);
+        desc.MiscFlags = D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        
+        D3D11_SUBRESOURCE_DATA data = {};
+        data.pSysMem = pInitialData;
+    
+        ThrowIfFailed(pDevice->CreateBuffer(&desc, (pInitialData) ? (&data) : nullptr, pBuffer.GetAddressOf()));
+        return pBuffer;
+    }
+
+    template<typename T>
     auto CreateStructuredBuffer(ComPtr<ID3D11Device> pDevice, uint32_t numElements, bool isCPUWritable, bool isGPUWritable, const T* pInitialData = nullptr) -> Microsoft::WRL::ComPtr<ID3D11Buffer> {
         ComPtr<ID3D11Buffer> pBuffer;
 

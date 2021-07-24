@@ -46,7 +46,9 @@ private:
 
     auto InitializeRenderTextures() -> void;
 
-    auto InitializeConstantBuffers() -> void;
+    auto InitializeBuffers() -> void;
+
+    auto InitilizeTileBuffer(uint32_t threadGroupsX, uint32_t threadGroupsY) -> void;
 
     auto InitializeEnviromentMap() -> void;
 
@@ -72,25 +74,34 @@ private:
     DX::ComPtr<ID3D11ShaderResourceView> m_pSRVEnviroment;
 
     DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVColor;
+    DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVNormal;
+    DX::ComPtr<ID3D11ShaderResourceView>  m_SRVDepth;
     DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVColorSum;
 
     DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVColor;
+    DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVNormal;
+    DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVDepth;
     DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVColorSum;
 
     DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVToneMap;
     DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVToneMap;
 
+    DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVDispersionTiles;
+    DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVDispersionTiles;
+
     DX::GraphicsPSO m_PSODefault = {};
     DX::GraphicsPSO m_PSOBlit = {};
-    DX::ComputePSO  m_PSOPathTracing = {};
-    DX::ComputePSO  m_PSOPathTracingSum = {};
+    DX::ComputePSO  m_PSORayTrace = {};
+    DX::ComputePSO  m_PSOAccumulate = {};
+    DX::ComputePSO  m_PSODispersion = {};
     DX::ComputePSO  m_PSOToneMap = {};
 
     DX::ComPtr<ID3D11SamplerState>  m_pSamplerPoint;
     DX::ComPtr<ID3D11SamplerState>  m_pSamplerLinear;
     DX::ComPtr<ID3D11SamplerState>  m_pSamplerAnisotropic;
 
-    DX::ComPtr<ID3D11Buffer> m_pCBFrame;
+    DX::ComPtr<ID3D11Buffer> m_pConstantBufferFrame;
+    DX::ComPtr<ID3D11Buffer> m_pIndirectBufferArgs;
 
     ColorTransferFunction1D  m_DiffuseTransferFunc;
     ColorTransferFunction1D  m_SpecularTransferFunc;
@@ -98,7 +109,7 @@ private:
     ScalarTransferFunction1D m_RoughnessTransferFunc;
     ScalarTransferFunction1D m_OpacityTransferFunc;
 
-    Hawk::Components::Camera m_Camera;
+    Hawk::Components::Camera m_Camera = {};
 
     Hawk::Math::Vec3 m_BoundingBoxMin = Hawk::Math::Vec3(-0.5f, -0.5f, -0.5f);
     Hawk::Math::Vec3 m_BoundingBoxMax = Hawk::Math::Vec3(+0.5f, +0.5f, +0.5f);
@@ -106,9 +117,9 @@ private:
     float    m_DeltaTime = 0.0f;
     float    m_RotateSensivity = 0.25f;
     float    m_ZoomSensivity = 1.5f;
+    float    m_Dispersion = 0.0f;
     float    m_Density = 100.0f;
     float    m_Exposure = 20.0f;
-    float    m_DenoiserStrange = 1.0f;
     float    m_Zoom = 1.0f;
     uint32_t m_TraceDepth = 2;
     uint32_t m_StepCount = 180;
@@ -121,9 +132,6 @@ private:
     uint16_t m_DimensionX = 0;
     uint16_t m_DimensionY = 0;
     uint16_t m_DimensionZ = 0;
-
-    uint32_t m_ThreadSizeDimensionX = 16;
-    uint32_t m_ThreadSizeDimensionY = 16;
 
     std::random_device m_RandomDevice;
     std::mt19937       m_RandomGenerator;
