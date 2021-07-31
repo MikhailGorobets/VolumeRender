@@ -85,11 +85,11 @@ ApplicationVolumeRender::ApplicationVolumeRender(ApplicationDesc const& desc)
 }
 
 auto ApplicationVolumeRender::InitializeShaders() -> void {
-   
+
     auto compileShader = [](auto fileName, auto entrypoint, auto target, auto macros) -> DX::ComPtr<ID3DBlob> {
         DX::ComPtr<ID3DBlob> pCodeBlob;
         DX::ComPtr<ID3DBlob> pErrorBlob;
-      
+
         if (FAILED(D3DCompileFromFile(fileName, macros, D3D_COMPILE_STANDARD_FILE_INCLUDE, entrypoint, target, 0, 0, pCodeBlob.GetAddressOf(), pErrorBlob.GetAddressOf())))
             throw std::runtime_error(static_cast<const char*>(pErrorBlob->GetBufferPointer()));
         return pCodeBlob;
@@ -102,7 +102,7 @@ auto ApplicationVolumeRender::InitializeShaders() -> void {
         {"THREAD_GROUP_SIZE_X", threadSizeX.c_str()},
         {"THREAD_GROUP_SIZE_Y", threadSizeY.c_str()},
         { nullptr, nullptr}
-    }; 
+    };
 
     auto pBlobCSRayTrace = compileShader(L"Data/Shaders/RayTracing.hlsl", "RayTrace", "cs_5_0", macros);
     auto pBlobCSAccumulate = compileShader(L"Data/Shaders/Accumulation.hlsl", "Accumulate", "cs_5_0", macros);
@@ -131,7 +131,7 @@ auto ApplicationVolumeRender::InitializeShaders() -> void {
     DX::ThrowIfFailed(m_pDevice->CreateVertexShader(pBlobVSDebugTiles->GetBufferPointer(), pBlobVSDebugTiles->GetBufferSize(), nullptr, m_PSODegugTiles.pVS.ReleaseAndGetAddressOf()));
     DX::ThrowIfFailed(m_pDevice->CreateGeometryShader(pBlobGSDebugTiles->GetBufferPointer(), pBlobGSDebugTiles->GetBufferSize(), nullptr, m_PSODegugTiles.pGS.ReleaseAndGetAddressOf()));
     DX::ThrowIfFailed(m_pDevice->CreatePixelShader(pBlobPSDegugTiles->GetBufferPointer(), pBlobPSDegugTiles->GetBufferSize(), nullptr, m_PSODegugTiles.pPS.ReleaseAndGetAddressOf()));
-    m_PSODegugTiles.PrimitiveTopology = D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP; 
+    m_PSODegugTiles.PrimitiveTopology = D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP;
 
 }
 
@@ -162,10 +162,10 @@ auto ApplicationVolumeRender::InitializeVolumeTexture() -> void {
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
 
     for (size_t index = 0u; index < std::size(intensity); index++) {
-       intensity[index] = static_cast<uint16_t>(std::ceil(std::numeric_limits<uint16_t>::max() * ((data[index] - tmin) / static_cast<F32>(tmax - tmin))));
+        intensity[index] = static_cast<uint16_t>(std::ceil(std::numeric_limits<uint16_t>::max() * ((data[index] - tmin) / static_cast<F32>(tmax - tmin))));
     }
-       
-    {      
+
+    {
         DX::ComPtr<ID3D11Texture3D> pTextureIntensity;
         D3D11_TEXTURE3D_DESC desc = {};
         desc.Width = m_DimensionX;
@@ -214,8 +214,9 @@ auto ApplicationVolumeRender::InitializeVolumeTexture() -> void {
             ID3D11UnorderedAccessView* ppUAVTextures[] = {m_pUAVVolumeIntensity[mipLevelID + 0].Get()};
             ID3D11SamplerState* ppSamplers[] = {m_pSamplerLinear.Get()};
 
-            ID3D11UnorderedAccessView* ppUAVClear[] = {nullptr,};
+            ID3D11UnorderedAccessView* ppUAVClear[] = {nullptr};
             ID3D11ShaderResourceView* ppSRVClear[] = {nullptr};
+            ID3D11SamplerState* ppSamplerClear[] = {nullptr};
 
             m_PSOGenerateMipLevel.Apply(m_pImmediateContext);
             m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVTextures), ppSRVTextures);
@@ -225,6 +226,7 @@ auto ApplicationVolumeRender::InitializeVolumeTexture() -> void {
 
             m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVClear), ppUAVClear, nullptr);
             m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
+            m_pImmediateContext->CSSetSamplers(0, _countof(ppSamplerClear), ppSamplerClear);
         }
     }
 
@@ -246,12 +248,13 @@ auto ApplicationVolumeRender::InitializeVolumeTexture() -> void {
             uint32_t threadGroupY = static_cast<uint32_t>(std::ceil(m_DimensionY / 4.0f));
             uint32_t threadGroupZ = static_cast<uint32_t>(std::ceil(m_DimensionZ / 4.0f));
 
-            ID3D11ShaderResourceView* ppSRVTextures[] = {m_pSRVVolumeIntensity[0].Get()};
+            ID3D11ShaderResourceView* ppSRVTextures[] = {m_pSRVVolumeIntensity[0].Get(), m_pSRVOpasityTF.Get()};
             ID3D11UnorderedAccessView* ppUAVTextures[] = {m_pUAVGradient.Get()};
-            ID3D11SamplerState* ppSamplers[] = {m_pSamplerPoint.Get()};
+            ID3D11SamplerState* ppSamplers[] = {m_pSamplerPoint.Get(), m_pSamplerLinear.Get()};
 
-            ID3D11UnorderedAccessView* ppUAVClear[] = {nullptr,};
-            ID3D11ShaderResourceView* ppSRVClear[] = {nullptr};
+            ID3D11UnorderedAccessView* ppUAVClear[] = {nullptr};
+            ID3D11ShaderResourceView* ppSRVClear[] = {nullptr, nullptr};
+            ID3D11SamplerState* ppSamplerClear[] = {nullptr, nullptr};
 
             m_PSOComputeGradient.Apply(m_pImmediateContext);
             m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVTextures), ppSRVTextures);
@@ -261,6 +264,7 @@ auto ApplicationVolumeRender::InitializeVolumeTexture() -> void {
 
             m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVClear), ppUAVClear, nullptr);
             m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
+            m_pImmediateContext->CSSetSamplers(0, _countof(ppSamplerClear), ppSamplerClear);
         }
     }
 }
@@ -338,7 +342,7 @@ auto ApplicationVolumeRender::InitializeRenderTextures() -> void {
         desc.Height = m_ApplicationDesc.Height;
         desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
         desc.SampleDesc.Count = 1;
-        desc.SampleDesc.Quality = 0;     
+        desc.SampleDesc.Quality = 0;
 
         Microsoft::WRL::ComPtr<ID3D11Texture2D> pTextureColor;
         DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTextureColor.ReleaseAndGetAddressOf()));
@@ -356,7 +360,7 @@ auto ApplicationVolumeRender::InitializeRenderTextures() -> void {
         desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
         desc.SampleDesc.Count = 1;
         desc.SampleDesc.Quality = 0;
-    
+
         Microsoft::WRL::ComPtr<ID3D11Texture2D> pTextureNormal;
         DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTextureNormal.ReleaseAndGetAddressOf()));
         DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureNormal.Get(), nullptr, m_pSRVNormal.ReleaseAndGetAddressOf()));
@@ -413,11 +417,11 @@ auto ApplicationVolumeRender::InitializeRenderTextures() -> void {
         DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTextureToneMap.GetAddressOf()));
         DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureToneMap.Get(), nullptr, m_pSRVToneMap.GetAddressOf()));
         DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureToneMap.Get(), nullptr, m_pUAVToneMap.GetAddressOf()));
-    }  
+    }
 }
 
 auto ApplicationVolumeRender::InitializeBuffers() -> void {
-   
+
     m_pConstantBufferFrame = DX::CreateConstantBuffer<FrameBuffer>(m_pDevice);
     {
         DispathIndirectBuffer arguments = {1, 1, 1};
@@ -427,7 +431,7 @@ auto ApplicationVolumeRender::InitializeBuffers() -> void {
     {
         DrawInstancedIndirectBuffer arguments = {0, 1, 0, 0};
         m_pDrawInstancedIndirectBufferArgs = DX::CreateIndirectBuffer<DrawInstancedIndirectBuffer>(m_pDevice, &arguments);
-    } 
+    }
 }
 
 auto ApplicationVolumeRender::InitilizeTileBuffer(uint32_t threadGroupsX, uint32_t threadGroupsY) -> void {
@@ -492,12 +496,12 @@ auto ApplicationVolumeRender::Update(float deltaTime) -> void {
         std::cout << e.what() << std::endl;
     }
 
-    Hawk::Math::Vec3 scaleVector = { 0.488f * m_DimensionX, 0.488f * m_DimensionY, 0.7f * m_DimensionZ };
-    scaleVector /= (std::max)({ scaleVector.x, scaleVector.y, scaleVector.z });
+    Hawk::Math::Vec3 scaleVector = {0.488f * m_DimensionX, 0.488f * m_DimensionY, 0.7f * m_DimensionZ};
+    scaleVector /= (std::max)({scaleVector.x, scaleVector.y, scaleVector.z});
 
     auto const& matrixView = m_Camera.ToMatrix();
     Hawk::Math::Mat4x4 matrixProjection = Hawk::Math::Orthographic(m_Zoom * (m_ApplicationDesc.Width / static_cast<F32>(m_ApplicationDesc.Height)), m_Zoom, -2.0f, 2.0f);
-    Hawk::Math::Mat4x4 matrixWorld  = Hawk::Math::RotateX(Hawk::Math::Radians(-90.0f));
+    Hawk::Math::Mat4x4 matrixWorld = Hawk::Math::RotateX(Hawk::Math::Radians(-90.0f));
     Hawk::Math::Mat4x4 matrixNormal = Hawk::Math::Inverse(Hawk::Math::Transpose(matrixWorld));
 
     {
@@ -514,7 +518,7 @@ auto ApplicationVolumeRender::Update(float deltaTime) -> void {
 
         map->InvViewProjectionMatrix = Hawk::Math::Inverse(map->ViewProjectionMatrix);
         map->InvNormalViewMatrix = Hawk::Math::Inverse(map->NormalViewMatrix);
-        map->InvWorldViewProjectionMatrix = Hawk::Math::Inverse(map->WorldViewProjectionMatrix);    
+        map->InvWorldViewProjectionMatrix = Hawk::Math::Inverse(map->WorldViewProjectionMatrix);
         map->InvViewMatrix = Hawk::Math::Inverse(map->InvViewMatrix);
         map->InvWorldMatrix = Hawk::Math::Inverse(map->WorldMatrix);
         map->InvNormalMatrix = Hawk::Math::Inverse(map->NormalMatrix);
@@ -532,9 +536,9 @@ auto ApplicationVolumeRender::Update(float deltaTime) -> void {
 }
 
 auto ApplicationVolumeRender::Blit(DX::ComPtr<ID3D11ShaderResourceView> pSrc, DX::ComPtr<ID3D11RenderTargetView> pDst)-> void {
-    ID3D11ShaderResourceView* ppSRVClear[] = { nullptr, nullptr, nullptr, nullptr,  nullptr, nullptr, nullptr, nullptr };
+    ID3D11ShaderResourceView* ppSRVClear[] = {nullptr, nullptr, nullptr, nullptr,  nullptr, nullptr, nullptr, nullptr};
     D3D11_VIEWPORT viewport = {0.0f, 0.0f, static_cast<float>(m_ApplicationDesc.Width), static_cast<float>(m_ApplicationDesc.Height), 0.0f, 1.0f};
-    
+
     // Set RTVs
     m_pImmediateContext->OMSetRenderTargets(1, pDst.GetAddressOf(), nullptr);
     m_pImmediateContext->RSSetViewports(1, &viewport);
@@ -559,10 +563,8 @@ auto ApplicationVolumeRender::Blit(DX::ComPtr<ID3D11ShaderResourceView> pSrc, DX
 
 auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRTV) -> void {
 
-  
-
     ID3D11UnorderedAccessView* ppUAVClear[] = {nullptr, nullptr, nullptr};
-    ID3D11ShaderResourceView* ppSRVClear[] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+    ID3D11ShaderResourceView* ppSRVClear[] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
 
     uint32_t threadGroupsX = static_cast<uint32_t>(std::ceil(m_ApplicationDesc.Width / 8));
     uint32_t threadGroupsY = static_cast<uint32_t>(std::ceil(m_ApplicationDesc.Height / 8));
@@ -583,7 +585,7 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
         m_pImmediateContext->CopyStructureCount(m_pDrawInstancedIndirectBufferArgs.Get(), 0, m_pUAVDispersionTiles.Get());
         m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVClear), ppUAVClear, nullptr);
         m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
- 
+
     } else {
         ID3D11ShaderResourceView* ppSRVTextures[] = {m_pSRVToneMap.Get(), m_pSRVNormal.Get(), m_pSRVDepth.Get()};
         ID3D11UnorderedAccessView* ppUAVTextures[] = {m_pUAVDispersionTiles.Get()};
@@ -619,7 +621,7 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
             m_pSRVRoughnessTF.Get(),
             m_pSRVOpasityTF.Get(),
             m_pSRVEnviroment.Get(),
-            m_pSRVDispersionTiles.Get()          
+            m_pSRVDispersionTiles.Get()
         };
 
         ID3D11UnorderedAccessView* ppUAVTextures[] = {
@@ -663,7 +665,7 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
         m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVClear), ppUAVClear, nullptr);
         m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
     }
-  
+
     this->Blit(m_pSRVToneMap, pRTV);
 
     if (m_IsDrawDegugTiles) {
@@ -685,7 +687,7 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
         m_pImmediateContext->VSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
     }
 
-    m_FrameIndex++; 
+    m_FrameIndex++;
 }
 
 auto ApplicationVolumeRender::RenderGUI(DX::ComPtr<ID3D11RenderTargetView> pRTV) -> void {
@@ -706,7 +708,7 @@ auto ApplicationVolumeRender::RenderGUI(DX::ComPtr<ID3D11RenderTargetView> pRTV)
     ImGui::SliderInt("Trace depth", (int32_t*)&m_TraceDepth, 1, 10);
     m_FrameIndex = ImGui::SliderInt("Mip Level", (int32_t*)&m_MipLevel, 0, m_DimensionMipLevels - 1) ? 0 : m_FrameIndex;
     m_FrameIndex = ImGui::SliderFloat("Dispersion", &m_Dispersion, 0.0f, 0.1f, "%.4f") ? 0 : m_FrameIndex;
-   
+
     ImGui::NewLine();
 
     ImGui::PlotLines("Opacity", [](void* data, int idx) { return static_cast<ScalarTransferFunction1D*>(data)->Evaluate(idx / static_cast<F32>(256));  }, &m_OpacityTransferFunc, m_SamplingCount);

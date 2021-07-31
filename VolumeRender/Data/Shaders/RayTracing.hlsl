@@ -152,8 +152,7 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
     const float threshold = -log(Rand(rng)) / desc.DensityScale;
 	
     float sum = 0.0f;
-    float t = minT + Rand(rng) * desc.StepSize;
-   	   
+    float t = minT + Rand(rng) * desc.StepSize; 	   
     float3 position = float3(0.0, 0.0, 0.0f);
     
     [loop]
@@ -166,15 +165,16 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
         sum += desc.DensityScale * GetOpacity(desc, position) * desc.StepSize;
         t += desc.StepSize;
     }
-	
-    const float3 diffuse = GetDiffuse(desc, position);
-    const float3 specular = GetSpecular(desc, position);
-    const float  roughness = GetRoughness(desc, position);
+   
     const float4 gradient = GetGradient(desc, position);
 	
     [branch]
     if (gradient.a < FLT_EPSILON) 
         return event;
+    
+    const float3 diffuse = GetDiffuse(desc, position);
+    const float3 specular = GetSpecular(desc, position);
+    const float roughness = GetRoughness(desc, position);
     
     event.IsValid = true;
     event.Normal = -normalize(gradient.xyz);

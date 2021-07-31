@@ -5,7 +5,7 @@ RWTexture3D<float> TextureDst: register(u0);
 
 float Mip(uint3 position) {
     float3 dimension;
-    TextureSrc.GetDimensions(dimension.x, dimension.y, dimension.z);
+    TextureDst.GetDimensions(dimension.x, dimension.y, dimension.z);
     float3 texcoord = (position.xyz + float3(0.5, 0.5, 0.5)) / dimension;
     return TextureSrc.SampleLevel(LinearSampler, texcoord, 0);
 }

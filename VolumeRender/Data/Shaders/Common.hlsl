@@ -169,37 +169,6 @@ CRNG InitCRND(uint2 id, uint frameIndex) {
     return rng;
 }
 
-float3 ComputeGradientCD(Texture3D<float> volume, SamplerState samplerState, float3 texcoord, float3 gradientDelta) {
-    float dx = volume.SampleLevel(samplerState, texcoord + float3(gradientDelta.x, 0.0f, 0.0f), 0) - volume.SampleLevel(samplerState, texcoord - float3(gradientDelta.x, 0.0f, 0.0f), 0);
-    float dy = volume.SampleLevel(samplerState, texcoord + float3(0.0f, gradientDelta.y, 0.0f), 0) - volume.SampleLevel(samplerState, texcoord - float3(0.0f, gradientDelta.y, 0.0f), 0);
-    float dz = volume.SampleLevel(samplerState, texcoord + float3(0.0f, 0.0f, gradientDelta.z), 0) - volume.SampleLevel(samplerState, texcoord - float3(0.0f, 0.0f, gradientDelta.z), 0);
-    return float3(dx, dy, dz);
-}
-
-float3 ComputeGradientFD(Texture3D<float> volume, SamplerState samplerState, float3 texcoord, float3 gradientDelta) {
-    float p = volume.SampleLevel(samplerState, texcoord, 0);
-    float dx = volume.SampleLevel(samplerState, texcoord + float3(gradientDelta.x, 0.0f, 0.0f), 0) - p;
-    float dy = volume.SampleLevel(samplerState, texcoord + float3(0.0f, gradientDelta.y, 0.0f), 0) - p;
-    float dz = volume.SampleLevel(samplerState, texcoord + float3(0.0f, 0.0f, gradientDelta.z), 0) - p;
-    return float3(dx, dy, dz);
-}
-
-float3 ComputeGradientFiltered(Texture3D<float> volume, SamplerState samplerState, float3 texcoord, float3 gradientDelta) {
-    float3 G0 = ComputeGradientCD(volume, samplerState, texcoord, gradientDelta);
-    float3 G1 = ComputeGradientCD(volume, samplerState, texcoord + float3(-gradientDelta.x, -gradientDelta.y, -gradientDelta.z), gradientDelta);
-    float3 G2 = ComputeGradientCD(volume, samplerState, texcoord + float3(+gradientDelta.x, +gradientDelta.y, +gradientDelta.z), gradientDelta);
-    float3 G3 = ComputeGradientCD(volume, samplerState, texcoord + float3(-gradientDelta.x, +gradientDelta.y, -gradientDelta.z), gradientDelta);
-    float3 G4 = ComputeGradientCD(volume, samplerState, texcoord + float3(+gradientDelta.x, -gradientDelta.y, +gradientDelta.z), gradientDelta);
-    float3 G5 = ComputeGradientCD(volume, samplerState, texcoord + float3(-gradientDelta.x, -gradientDelta.y, +gradientDelta.z), gradientDelta);
-    float3 G6 = ComputeGradientCD(volume, samplerState, texcoord + float3(+gradientDelta.x, +gradientDelta.y, -gradientDelta.z), gradientDelta);
-    float3 G7 = ComputeGradientCD(volume, samplerState, texcoord + float3(-gradientDelta.x, +gradientDelta.y, +gradientDelta.z), gradientDelta);
-    float3 G8 = ComputeGradientCD(volume, samplerState, texcoord + float3(+gradientDelta.x, -gradientDelta.y, -gradientDelta.z), gradientDelta);
- 
-    float3 L0 = lerp(lerp(G1, G2, 0.5), lerp(G3, G4, 0.5), 0.5);
-    float3 L1 = lerp(lerp(G5, G6, 0.5), lerp(G7, G8, 0.5), 0.5);
-
-    return lerp(G0, lerp(L0, L1, 0.5), 0.75);
-}
 
 float3 GetNormalizedTexcoord(float3 position, AABB aabb) {
     return (position - aabb.Min) / (aabb.Max - aabb.Min);
