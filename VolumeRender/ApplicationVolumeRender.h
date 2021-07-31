@@ -65,7 +65,14 @@ private:
     auto RenderGUI(DX::ComPtr<ID3D11RenderTargetView> pRTV) -> void override;
 
 private:
-    DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVVolumeIntensity;
+    using D3D11ArrayUnorderedAccessView = std::vector< DX::ComPtr<ID3D11UnorderedAccessView>>;
+    using D3D11ArrayShadeResourceView   = std::vector< DX::ComPtr<ID3D11ShaderResourceView>>;
+
+    D3D11ArrayShadeResourceView   m_pSRVVolumeIntensity;
+    D3D11ArrayUnorderedAccessView m_pUAVVolumeIntensity;
+
+    DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVGradient;
+    DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVGradient;
 
     DX::ComPtr<ID3D11ShaderResourceView> m_pSRVDiffuseTF;
     DX::ComPtr<ID3D11ShaderResourceView> m_pSRVSpecularTF;
@@ -96,6 +103,8 @@ private:
     DX::ComputePSO  m_PSOAccumulate = {};
     DX::ComputePSO  m_PSODispersion = {};
     DX::ComputePSO  m_PSOToneMap = {};
+    DX::ComputePSO  m_PSOGenerateMipLevel = {};
+    DX::ComputePSO  m_PSOComputeGradient = {};
 
     DX::ComPtr<ID3D11SamplerState>  m_pSamplerPoint;
     DX::ComPtr<ID3D11SamplerState>  m_pSamplerLinear;
@@ -123,6 +132,7 @@ private:
     float    m_Density = 100.0f;
     float    m_Exposure = 20.0f;
     float    m_Zoom = 1.0f;
+    uint32_t m_MipLevel = 0;
     uint32_t m_TraceDepth = 2;
     uint32_t m_StepCount = 180;
     uint32_t m_FrameIndex = 0;
@@ -136,6 +146,7 @@ private:
     uint16_t m_DimensionX = 0;
     uint16_t m_DimensionY = 0;
     uint16_t m_DimensionZ = 0;
+    uint16_t m_DimensionMipLevels = 0;
 
     std::random_device m_RandomDevice;
     std::mt19937       m_RandomGenerator;

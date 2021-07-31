@@ -76,11 +76,11 @@ ApplicationVolumeRender::ApplicationVolumeRender(ApplicationDesc const& desc)
     , m_RandomDistribution(0.0f, 1.0f) {
 
     this->InitializeShaders();
-    this->InitializeVolumeTexture();
     this->InitializeTransferFunction();
     this->InitializeSamplerStates();
     this->InitializeRenderTextures();
     this->InitializeBuffers();
+    this->InitializeVolumeTexture();
     this->InitializeEnviromentMap();
 }
 
@@ -108,6 +108,8 @@ auto ApplicationVolumeRender::InitializeShaders() -> void {
     auto pBlobCSAccumulate = compileShader(L"Data/Shaders/Accumulation.hlsl", "Accumulate", "cs_5_0", macros);
     auto pBlobCSDispersion = compileShader(L"Data/Shaders/Dispersion.hlsl", "Dispersion", "cs_5_0", macros);
     auto pBlobCSToneMap = compileShader(L"Data/Shaders/ToneMap.hlsl", "ToneMap", "cs_5_0", macros);
+    auto pBlobCSComputeGradient = compileShader(L"Data/Shaders/Gradient.hlsl", "ComputeGradient", "cs_5_0", macros);
+    auto pBlobCSGenerateMipLevel = compileShader(L"Data/Shaders/LevelOfDetail.hlsl", "GenerateMipLevel", "cs_5_0", macros);
     auto pBlobVSBlit = compileShader(L"Data/Shaders/Blitting.hlsl", "BlitVS", "vs_5_0", macros);
     auto pBlobPSBlit = compileShader(L"Data/Shaders/Blitting.hlsl", "BlitPS", "ps_5_0", macros);
     auto pBlobVSDebugTiles = compileShader(L"Data/Shaders/Debug.hlsl", "DebugTilesVS", "vs_5_0", macros);
@@ -119,6 +121,8 @@ auto ApplicationVolumeRender::InitializeShaders() -> void {
     DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSAccumulate->GetBufferPointer(), pBlobCSAccumulate->GetBufferSize(), nullptr, m_PSOAccumulate.pCS.ReleaseAndGetAddressOf()));
     DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSDispersion->GetBufferPointer(), pBlobCSDispersion->GetBufferSize(), nullptr, m_PSODispersion.pCS.ReleaseAndGetAddressOf()));
     DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSToneMap->GetBufferPointer(), pBlobCSToneMap->GetBufferSize(), nullptr, m_PSOToneMap.pCS.ReleaseAndGetAddressOf()));
+    DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSGenerateMipLevel->GetBufferPointer(), pBlobCSGenerateMipLevel->GetBufferSize(), nullptr, m_PSOGenerateMipLevel.pCS.ReleaseAndGetAddressOf()));
+    DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSComputeGradient->GetBufferPointer(), pBlobCSComputeGradient->GetBufferSize(), nullptr, m_PSOComputeGradient.pCS.ReleaseAndGetAddressOf()));
 
     DX::ThrowIfFailed(m_pDevice->CreateVertexShader(pBlobVSBlit->GetBufferPointer(), pBlobVSBlit->GetBufferSize(), nullptr, m_PSOBlit.pVS.ReleaseAndGetAddressOf()));
     DX::ThrowIfFailed(m_pDevice->CreatePixelShader(pBlobPSBlit->GetBufferPointer(), pBlobPSBlit->GetBufferSize(), nullptr, m_PSOBlit.pPS.ReleaseAndGetAddressOf()));
@@ -139,6 +143,7 @@ auto ApplicationVolumeRender::InitializeVolumeTexture() -> void {
     file.read(reinterpret_cast<char*>(&m_DimensionX), sizeof(uint16_t));
     file.read(reinterpret_cast<char*>(&m_DimensionY), sizeof(uint16_t));
     file.read(reinterpret_cast<char*>(&m_DimensionZ), sizeof(uint16_t));
+    m_DimensionMipLevels = static_cast<uint16_t>(std::ceil(std::log2(std::max(std::max(m_DimensionX, m_DimensionY), m_DimensionZ)))) + 1;
 
     std::vector<uint16_t> data(size_t(m_DimensionX) * size_t(m_DimensionY) * size_t(m_DimensionZ));
     std::vector<uint16_t> intensity(size_t(m_DimensionX) * size_t(m_DimensionY) * size_t(m_DimensionZ));
@@ -160,24 +165,103 @@ auto ApplicationVolumeRender::InitializeVolumeTexture() -> void {
        intensity[index] = static_cast<uint16_t>(std::ceil(std::numeric_limits<uint16_t>::max() * ((data[index] - tmin) / static_cast<F32>(tmax - tmin))));
     }
        
-    {
+    {      
+        DX::ComPtr<ID3D11Texture3D> pTextureIntensity;
         D3D11_TEXTURE3D_DESC desc = {};
         desc.Width = m_DimensionX;
         desc.Height = m_DimensionY;
         desc.Depth = m_DimensionZ;
         desc.Format = DXGI_FORMAT_R16_UNORM;
+        desc.MipLevels = m_DimensionMipLevels;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+        desc.Usage = D3D11_USAGE_DEFAULT;;
+        DX::ThrowIfFailed(m_pDevice->CreateTexture3D(&desc, nullptr, pTextureIntensity.GetAddressOf()));
+
+        for (uint32_t mipLevelID = 0; mipLevelID < desc.MipLevels; mipLevelID++) {
+            D3D11_SHADER_RESOURCE_VIEW_DESC descSRV = {};
+            descSRV.Format = DXGI_FORMAT_R16_UNORM;
+            descSRV.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE3D;
+            descSRV.Texture3D.MipLevels = 1;
+            descSRV.Texture3D.MostDetailedMip = mipLevelID;
+
+            Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> pSRVVolumeIntensity;
+            DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureIntensity.Get(), &descSRV, pSRVVolumeIntensity.GetAddressOf()));
+            m_pSRVVolumeIntensity.push_back(pSRVVolumeIntensity);
+        }
+
+        for (uint32_t mipLevelID = 0; mipLevelID < desc.MipLevels; mipLevelID++) {
+            D3D11_UNORDERED_ACCESS_VIEW_DESC descUAV = {};
+            descUAV.Format = DXGI_FORMAT_R16_UNORM;
+            descUAV.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE3D;
+            descUAV.Texture3D.MipSlice = mipLevelID;
+            descUAV.Texture3D.FirstWSlice = 0;
+            descUAV.Texture3D.WSize = std::max(m_DimensionZ >> mipLevelID, 1);
+
+            Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> pUAVVolumeIntensity;
+            DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureIntensity.Get(), &descUAV, pUAVVolumeIntensity.GetAddressOf()));
+            m_pUAVVolumeIntensity.push_back(pUAVVolumeIntensity);
+        }
+
+        D3D11_BOX box = {0, 0, 0,  desc.Width, desc.Height,  desc.Depth};
+        m_pImmediateContext->UpdateSubresource(pTextureIntensity.Get(), 0, &box, std::data(intensity), sizeof(uint16_t) * desc.Width, sizeof(uint16_t) * desc.Height * desc.Width);
+
+        for (uint32_t mipLevelID = 1; mipLevelID < desc.MipLevels - 1; mipLevelID++) {
+            uint32_t threadGroupX = std::max(static_cast<uint32_t>(std::ceil((m_DimensionX >> mipLevelID) / 4.0f)), 1u);
+            uint32_t threadGroupY = std::max(static_cast<uint32_t>(std::ceil((m_DimensionY >> mipLevelID) / 4.0f)), 1u);
+            uint32_t threadGroupZ = std::max(static_cast<uint32_t>(std::ceil((m_DimensionZ >> mipLevelID) / 4.0f)), 1u);
+
+            ID3D11ShaderResourceView* ppSRVTextures[] = {m_pSRVVolumeIntensity[mipLevelID - 1].Get()};
+            ID3D11UnorderedAccessView* ppUAVTextures[] = {m_pUAVVolumeIntensity[mipLevelID + 0].Get()};
+            ID3D11SamplerState* ppSamplers[] = {m_pSamplerLinear.Get()};
+
+            ID3D11UnorderedAccessView* ppUAVClear[] = {nullptr,};
+            ID3D11ShaderResourceView* ppSRVClear[] = {nullptr};
+
+            m_PSOGenerateMipLevel.Apply(m_pImmediateContext);
+            m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVTextures), ppSRVTextures);
+            m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVTextures), ppUAVTextures, nullptr);
+            m_pImmediateContext->CSSetSamplers(0, _countof(ppSamplers), ppSamplers);
+            m_pImmediateContext->Dispatch(threadGroupX, threadGroupY, threadGroupZ);
+
+            m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVClear), ppUAVClear, nullptr);
+            m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
+        }
+    }
+
+    {
+        DX::ComPtr<ID3D11Texture3D> pTextureGradient;
+        D3D11_TEXTURE3D_DESC desc = {};
+        desc.Width = m_DimensionX;
+        desc.Height = m_DimensionY;
+        desc.Depth = m_DimensionZ;
+        desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
         desc.MipLevels = 1;
-        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-        desc.Usage = D3D11_USAGE_IMMUTABLE;;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        DX::ThrowIfFailed(m_pDevice->CreateTexture3D(&desc, nullptr, pTextureGradient.ReleaseAndGetAddressOf()));
+        DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureGradient.Get(), nullptr, m_pSRVGradient.ReleaseAndGetAddressOf()));
+        DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureGradient.Get(), nullptr, m_pUAVGradient.ReleaseAndGetAddressOf()));
+        {
+            uint32_t threadGroupX = static_cast<uint32_t>(std::ceil(m_DimensionX / 4.0f));
+            uint32_t threadGroupY = static_cast<uint32_t>(std::ceil(m_DimensionY / 4.0f));
+            uint32_t threadGroupZ = static_cast<uint32_t>(std::ceil(m_DimensionZ / 4.0f));
 
-        D3D11_SUBRESOURCE_DATA resourceData = {};
-        resourceData.pSysMem = std::data(intensity);
-        resourceData.SysMemPitch = sizeof(uint16_t) * desc.Width;
-        resourceData.SysMemSlicePitch = sizeof(uint16_t) * desc.Height * desc.Width;
+            ID3D11ShaderResourceView* ppSRVTextures[] = {m_pSRVVolumeIntensity[0].Get()};
+            ID3D11UnorderedAccessView* ppUAVTextures[] = {m_pUAVGradient.Get()};
+            ID3D11SamplerState* ppSamplers[] = {m_pSamplerPoint.Get()};
 
-        Microsoft::WRL::ComPtr<ID3D11Texture3D> pTextureIntensity;
-        DX::ThrowIfFailed(m_pDevice->CreateTexture3D(&desc, &resourceData, pTextureIntensity.GetAddressOf()));
-        DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureIntensity.Get(), nullptr, m_pSRVVolumeIntensity.GetAddressOf()));
+            ID3D11UnorderedAccessView* ppUAVClear[] = {nullptr,};
+            ID3D11ShaderResourceView* ppSRVClear[] = {nullptr};
+
+            m_PSOComputeGradient.Apply(m_pImmediateContext);
+            m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVTextures), ppSRVTextures);
+            m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVTextures), ppUAVTextures, nullptr);
+            m_pImmediateContext->CSSetSamplers(0, _countof(ppSamplers), ppSamplers);
+            m_pImmediateContext->Dispatch(threadGroupX, threadGroupY, threadGroupZ);
+
+            m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVClear), ppUAVClear, nullptr);
+            m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
+        }
     }
 }
 
@@ -239,7 +323,7 @@ auto ApplicationVolumeRender::InitializeSamplerStates() -> void {
     };
 
     m_pSamplerPoint = createSamplerState(D3D11_FILTER_MIN_MAG_MIP_POINT, D3D11_TEXTURE_ADDRESS_CLAMP);
-    m_pSamplerLinear = createSamplerState(D3D11_FILTER_MIN_MAG_MIP_LINEAR, D3D11_TEXTURE_ADDRESS_CLAMP);
+    m_pSamplerLinear = createSamplerState(D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT, D3D11_TEXTURE_ADDRESS_CLAMP);
     m_pSamplerAnisotropic = createSamplerState(D3D11_FILTER_ANISOTROPIC, D3D11_TEXTURE_ADDRESS_WRAP);
 }
 
@@ -474,6 +558,9 @@ auto ApplicationVolumeRender::Blit(DX::ComPtr<ID3D11ShaderResourceView> pSrc, DX
 }
 
 auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRTV) -> void {
+
+  
+
     ID3D11UnorderedAccessView* ppUAVClear[] = {nullptr, nullptr, nullptr};
     ID3D11ShaderResourceView* ppSRVClear[] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 
@@ -485,7 +572,7 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
     m_pImmediateContext->PSSetConstantBuffers(0, 1, m_pConstantBufferFrame.GetAddressOf());
     m_pImmediateContext->CSSetConstantBuffers(0, 1, m_pConstantBufferFrame.GetAddressOf());
 
-    if (m_FrameIndex < m_SampleDispersion) {       
+    if (m_FrameIndex < m_SampleDispersion) {
         InitilizeTileBuffer(threadGroupsX, threadGroupsY);
 
         ID3D11UnorderedAccessView* ppUAVTextures[] = {m_pUAVDispersionTiles.Get()};
@@ -525,13 +612,14 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
         };
 
         ID3D11ShaderResourceView* ppSRVTextures[] = {
-            m_pSRVVolumeIntensity.Get(),
+            m_pSRVVolumeIntensity[m_MipLevel].Get(),
+            m_pSRVGradient.Get(),
             m_pSRVDiffuseTF.Get(),
             m_pSRVSpecularTF.Get(),
             m_pSRVRoughnessTF.Get(),
             m_pSRVOpasityTF.Get(),
             m_pSRVEnviroment.Get(),
-            m_pSRVDispersionTiles.Get()
+            m_pSRVDispersionTiles.Get()          
         };
 
         ID3D11UnorderedAccessView* ppUAVTextures[] = {
@@ -616,6 +704,7 @@ auto ApplicationVolumeRender::RenderGUI(DX::ComPtr<ID3D11RenderTargetView> pRTV)
     ImGui::SliderFloat("Density", &m_Density, 0.1f, 100.0f);
     ImGui::SliderInt("Step count", (int32_t*)&m_StepCount, 1, 512);
     ImGui::SliderInt("Trace depth", (int32_t*)&m_TraceDepth, 1, 10);
+    m_FrameIndex = ImGui::SliderInt("Mip Level", (int32_t*)&m_MipLevel, 0, m_DimensionMipLevels - 1) ? 0 : m_FrameIndex;
     m_FrameIndex = ImGui::SliderFloat("Dispersion", &m_Dispersion, 0.0f, 0.1f, "%.4f") ? 0 : m_FrameIndex;
    
     ImGui::NewLine();

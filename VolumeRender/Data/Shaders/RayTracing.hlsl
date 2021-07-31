@@ -31,12 +31,14 @@ struct VolumeDesc {
 };
 
 Texture3D<float>  TextureVolumeIntensity: register(t0);
-Texture1D<float3> TextureTransferFunctionDiffuse: register(t1);
-Texture1D<float3> TextureTransferFunctionSpecular: register(t2);
-Texture1D<float1> TextureTransferFunctionRoughness: register(t3);
-Texture1D<float1> TextureTransferFunctionOpacity: register(t4);
-Texture2D<float3> TextureEnvironment: register(t5);
-StructuredBuffer<uint> BufferDispersionTiles: register(t6);
+Texture3D<float4> TextureVolumeGradient: register(t1);
+Texture1D<float3> TextureTransferFunctionDiffuse: register(t2);
+Texture1D<float3> TextureTransferFunctionSpecular: register(t3);
+Texture1D<float1> TextureTransferFunctionRoughness: register(t4);
+Texture1D<float1> TextureTransferFunctionOpacity: register(t5);
+Texture2D<float3> TextureEnvironment: register(t6);
+StructuredBuffer<uint> BufferDispersionTiles: register(t7);
+
 
 RWTexture2D<float3> TextureColorUAV: register(u0);
 RWTexture2D<float3> TextureNormalUAV: register(u1);
@@ -101,10 +103,8 @@ float GetIntensity(VolumeDesc desc, float3 position) {
     return TextureVolumeIntensity.SampleLevel(SamplerLinear, GetNormalizedTexcoord(position, desc.BoundingBox), 0);
 }
 
-float3 GetGradient(VolumeDesc desc, float3 position) {
-    int3 dimension;
-    TextureVolumeIntensity.GetDimensions(dimension.x, dimension.y, dimension.z);
-    return ComputeGradientFiltered(TextureVolumeIntensity, SamplerLinear, GetNormalizedTexcoord(position, desc.BoundingBox), float3(1.0 / dimension.x, 1.0 / dimension.y, 1.0 / dimension.z));
+float4 GetGradient(VolumeDesc desc, float3 position) {   
+    return TextureVolumeGradient.SampleLevel(SamplerLinear, GetNormalizedTexcoord(position, desc.BoundingBox), 0);
 }
  
 float GetOpacity(VolumeDesc desc, float3 position) {
@@ -119,8 +119,7 @@ float3 GetSpecular(VolumeDesc desc, float3 position) {
     return TextureTransferFunctionSpecular.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
 }
 
-float GetRoughness(VolumeDesc desc, float3 position)
-{
+float GetRoughness(VolumeDesc desc, float3 position) {
     return TextureTransferFunctionRoughness.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
 }
 
@@ -134,35 +133,36 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
     ScatterEvent event;
     event.Position = float3(0.0f, 0.0f, 0.0f);
     event.Normal = float3(0.0f, 0.0f, 0.0f);
-    event.View = float3(0.0f, 0.0f, 0.0f);
     event.Diffuse = float3(0.0f, 0.0f, 0.0f);
     event.Specular = float3(0.0f, 0.0f, 0.0f);
     event.Roughness = 0.0f;
     event.Opacity = 0.0f;
     event.Alpha = 0.0f;
     event.IsValid = false;
-   
+      
     Intersection intersect = IntersectAABB(ray, desc.BoundingBox);
 	
     [branch]
-    if (!intersect.IsValid)
+    if (intersect.Max < intersect.Min)
         return event;
 
-    const float minT = max(intersect.Near, ray.Min);
-    const float maxT = min(intersect.Far, ray.Max);
+    const float minT = max(intersect.Min, ray.Min);
+    const float maxT = min(intersect.Max, ray.Max);
+    
     const float threshold = -log(Rand(rng)) / desc.DensityScale;
 	
     float sum = 0.0f;
     float t = minT + Rand(rng) * desc.StepSize;
-    float3 position = float3(0.0f, 0.0f, 0.0f);
-		
+   	   
+    float3 position = float3(0.0, 0.0, 0.0f);
+    
     [loop]
     while (sum < threshold) {
         position = ray.Origin + t * ray.Direction;
         [branch]
         if (t >= maxT)
             return event;
-	
+
         sum += desc.DensityScale * GetOpacity(desc, position) * desc.StepSize;
         t += desc.StepSize;
     }
@@ -170,17 +170,16 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
     const float3 diffuse = GetDiffuse(desc, position);
     const float3 specular = GetSpecular(desc, position);
     const float  roughness = GetRoughness(desc, position);
-    const float3 gradient = GetGradient(desc, position);
+    const float4 gradient = GetGradient(desc, position);
 	
     [branch]
-    if (length(gradient) < FLT_EPSILON) 
+    if (gradient.a < FLT_EPSILON) 
         return event;
     
     event.IsValid = true;
-    event.Normal = -normalize(gradient);
+    event.Normal = -normalize(gradient.xyz);
     event.Normal = dot(event.Normal, -ray.Direction) < 0.0f ? -event.Normal : event.Normal;
     event.Position = position + 0.001f * event.Normal;
-    event.View = -ray.Direction;
     event.Diffuse = diffuse;
     event.Specular = specular;
     event.Roughness = roughness;
@@ -224,7 +223,7 @@ void RayTrace(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID) {
         }
         
         const float3 N = event.Normal;
-        const float3 V = event.View;
+        const float3 V = -ray.Direction;
 		
         const float3 H = GGX_SampleHemisphere(event.Normal, event.Alpha, rng);
         const float3 F = FresnelSchlick(event.Specular, saturate(dot(V, H)));
@@ -263,3 +262,38 @@ void RayTrace(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID) {
     TextureDepthUAV[id] = position.z;
 }
 
+//StructuredBuffer<Ray> Rays: register(t6);
+//
+//[numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, 1)]
+//void GeneratePrimaryRays(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID)
+//{
+//    uint2 id = GetThreadIDFromTileList(BufferDispersionTiles, groupID.x, thredID.xy);   
+//    CRNG rng = InitCRND(id, FrameBuffer.FrameIndex);
+//    Rays[0] = CreateCameraRay(id, FrameBuffer.FrameOffset, FrameBuffer.RenderTargetDim);
+//    //Write rays
+//}
+//
+//
+//[numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, 1)]
+//void ComputeIntersections(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID)
+//{
+//    uint2 id = GetThreadIDFromTileList(BufferDispersionTiles, groupID.x, thredID.xy);
+//    Ray ray = Rays[0];
+//    
+//    CRNG rng = InitCRND(id, FrameBuffer.FrameIndex);
+//    
+//    VolumeDesc desc;
+//    desc.BoundingBox.Min = FrameBuffer.BoundingBoxMin;
+//    desc.BoundingBox.Max = FrameBuffer.BoundingBoxMax;
+//    desc.StepSize = distance(desc.BoundingBox.Min, desc.BoundingBox.Max) / FrameBuffer.StepCount;
+//    desc.DensityScale = FrameBuffer.Density;
+//    
+//    ScatterEvent event = RayMarching(ray, desc, rng);
+//    //Write intersection;
+//}
+//
+//[numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, 1)]
+//void HandeIntersections(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID)
+//{
+//    
+//}

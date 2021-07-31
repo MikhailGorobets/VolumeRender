@@ -52,10 +52,10 @@ cbuffer ConstantFrameBuffer: register(b0) {
         uint TraceDepth;
         uint StepCount;
 
-        float Density;
+        float  Density;
         float3 BoundingBoxMin;
 
-        float Exposure;
+        float  Exposure;
         float3 BoundingBoxMax;
 
         float2 FrameOffset;
@@ -71,15 +71,13 @@ struct Ray {
 };
 
 struct Intersection {
-    float Near;
-    float Far;
-    bool IsValid;
+    float Min;
+    float Max;
 };
 
 struct ScatterEvent {
     float3 Position;
     float3 Normal;
-    float3 View;
     float3 Diffuse;
     float3 Specular;
     float Roughness;
@@ -99,9 +97,8 @@ struct CRNG {
 
 Intersection IntersectAABB(Ray ray, AABB aabb) {
     Intersection intersect;
-    intersect.IsValid = false;
-    intersect.Near = 0.0f;
-    intersect.Far = FLT_MAX;
+    intersect.Min = 0.0f;
+    intersect.Max = FLT_MAX;
 
     const float3 invR = rcp(ray.Direction);
     const float3 bot = invR * (aabb.Min - ray.Origin);
@@ -112,9 +109,8 @@ Intersection IntersectAABB(Ray ray, AABB aabb) {
     const float largestMin = max(max(tmin.x, tmin.y), tmin.z);
     const float largestMax = min(min(tmax.x, tmax.y), tmax.z);
 
-    intersect.IsValid = largestMax > largestMin;
-    intersect.Near = largestMin > 0.0f ? largestMin : 0.0f;
-    intersect.Far = largestMax;
+    intersect.Min = largestMin; //> 0.0f ? largestMin : 0.0f;
+    intersect.Max = largestMax;
 
     return intersect;
 }
@@ -207,6 +203,10 @@ float3 ComputeGradientFiltered(Texture3D<float> volume, SamplerState samplerStat
 
 float3 GetNormalizedTexcoord(float3 position, AABB aabb) {
     return (position - aabb.Min) / (aabb.Max - aabb.Min);
+}
+
+float3 GetWorldPosition(float3 texcoord, AABB aabb) {
+    return texcoord * (aabb.Max - aabb.Min) + aabb.Min;
 }
 
 uint2 GetThreadIDFromTileList(StructuredBuffer<uint> tiles, uint threadGroupID, uint2 offset) {

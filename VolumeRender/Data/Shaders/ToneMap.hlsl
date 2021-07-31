@@ -46,7 +46,6 @@ float3 ToneMapUncharted2Function(float3 x, float exposure) {
     float3 denominator = Uncharted2Function(A, B, C, D, E, F, W);
 
     return numerator / denominator;
-
 }
 
 float3 LinearToSRGB(float3 color) {
