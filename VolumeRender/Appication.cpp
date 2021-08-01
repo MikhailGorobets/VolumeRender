@@ -70,21 +70,19 @@ auto Application::Run() -> void {
         this->Update(this->CalculateFrameTime());
     
         uint32_t frameIndex = m_pSwapChain->GetCurrentBackBufferIndex();
-
         m_pD3D11On12Device->AcquireWrappedResources(m_pD3D11BackBuffersDummy[frameIndex].GetAddressOf(), 1);
         m_pD3D11On12Device->ReleaseWrappedResources(m_pD3D11BackBuffersDummy[frameIndex].GetAddressOf(), 1);
 
         m_pD3D11On12Device->AcquireWrappedResources(m_pD3D11BackBuffers[frameIndex].GetAddressOf(), 1);
-        m_pImmediateContext->ClearRenderTargetView(m_pRTV[frameIndex].Get(), std::data({ 0.0f, 0.0f, 0.0f, 1.0f }));
-
         this->RenderFrame(m_pRTV[frameIndex]);
         this->RenderGUI(m_pRTV[frameIndex]);
 
         ImGui::Render();
+        m_pAnnotation->BeginEvent(L"Render pass: ImGui");
         m_pImmediateContext->OMSetRenderTargets(1, m_pRTV[frameIndex].GetAddressOf(), nullptr);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
         m_pImmediateContext->OMSetRenderTargets(0, nullptr, nullptr);
-
+        m_pAnnotation->EndEvent();
         m_pD3D11On12Device->ReleaseWrappedResources(m_pD3D11BackBuffers[frameIndex].GetAddressOf(), 1);
         m_pImmediateContext->Flush();
       
@@ -190,6 +188,7 @@ auto Application::InitializeDirectX() -> void {
     {     
         DX::ThrowIfFailed(D3D11On12CreateDevice(m_pD3D12Device.Get(), d3d11DeviceFlags, nullptr, 0, reinterpret_cast<IUnknown**>(m_pD3D12CmdQueue.GetAddressOf()), 1, 0, &m_pDevice, &m_pImmediateContext, nullptr));
         DX::ThrowIfFailed(m_pDevice.As(&m_pD3D11On12Device));
+        DX::ThrowIfFailed(m_pImmediateContext.As(&m_pAnnotation));
 
         for (uint32_t frameID = 0; frameID < FrameCount; frameID++) {
             DX::ThrowIfFailed(m_pSwapChain->GetBuffer(frameID, IID_PPV_ARGS(&m_pD3D12BackBuffers[frameID])));

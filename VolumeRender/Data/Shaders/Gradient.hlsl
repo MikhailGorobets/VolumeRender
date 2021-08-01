@@ -22,6 +22,7 @@
  * SOFTWARE.
  */
 
+#include "Common.hlsl"
 
 SamplerState SamplerPoint:  register(s0);
 SamplerState SamplerLinear: register(s1);
@@ -121,5 +122,5 @@ float3 Gradient(uint3 position) {
 [numthreads(4, 4, 4)]
 void ComputeGradient(uint3 thredID: SV_DispatchThreadID, uint lineID: SV_GroupIndex) {  
     float3 gradient = Gradient(thredID);
-    TextureDst[thredID] = float4(normalize(gradient), length(gradient));
+    TextureDst[thredID] = float4(length(gradient) < FLT_MIN ? float3(0.0f, 0.0f, 0.0f) : normalize(gradient), length(gradient));
 }

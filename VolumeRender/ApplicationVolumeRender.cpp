@@ -269,10 +269,10 @@ auto ApplicationVolumeRender::InitializeVolumeTexture() -> void {
             m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVClear), ppUAVClear, nullptr);
             m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
             m_pImmediateContext->CSSetSamplers(0, _countof(ppSamplerClear), ppSamplerClear);
-        }     
+        }
         m_pImmediateContext->Flush();
     }
- 
+
 }
 
 auto ApplicationVolumeRender::InitializeTransferFunction() -> void {
@@ -543,7 +543,6 @@ auto ApplicationVolumeRender::Blit(DX::ComPtr<ID3D11ShaderResourceView> pSrc, DX
     ID3D11ShaderResourceView* ppSRVClear[] = {nullptr, nullptr, nullptr, nullptr,  nullptr, nullptr, nullptr, nullptr};
     D3D11_VIEWPORT viewport = {0.0f, 0.0f, static_cast<float>(m_ApplicationDesc.Width), static_cast<float>(m_ApplicationDesc.Height), 0.0f, 1.0f};
 
-    // Set RTVs
     m_pImmediateContext->OMSetRenderTargets(1, pDst.GetAddressOf(), nullptr);
     m_pImmediateContext->RSSetViewports(1, &viewport);
 
@@ -578,33 +577,42 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
     m_pImmediateContext->PSSetConstantBuffers(0, 1, m_pConstantBufferFrame.GetAddressOf());
     m_pImmediateContext->CSSetConstantBuffers(0, 1, m_pConstantBufferFrame.GetAddressOf());
 
-    if (m_FrameIndex < m_SampleDispersion) {        
+    if (m_FrameIndex < m_SampleDispersion) {
         ID3D11UnorderedAccessView* ppUAVResources[] = {m_pUAVDispersionTiles.Get()};
         uint32_t pCounters[] = {0};
 
+        m_pAnnotation->BeginEvent(L"Render Pass: Reset computed tiles");
         m_PSOResetTiles.Apply(m_pImmediateContext);
         m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVResources), ppUAVResources, pCounters);
         m_pImmediateContext->Dispatch(threadGroupsX, threadGroupsY, 1);
         m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVClear), ppUAVClear, nullptr);
+        m_pAnnotation->EndEvent();
     } else {
         ID3D11ShaderResourceView* ppSRVResources[] = {m_pSRVToneMap.Get(), m_pSRVNormal.Get(), m_pSRVDepth.Get()};
         ID3D11UnorderedAccessView* ppUAVResources[] = {m_pUAVDispersionTiles.Get()};
         uint32_t pCounters[] = {0};
 
+        m_pAnnotation->BeginEvent(L"Render Pass: Generete computed tiles");
         m_PSODispersion.Apply(m_pImmediateContext);
         m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVResources), ppSRVResources);
         m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVResources), ppUAVResources, pCounters);
         m_pImmediateContext->Dispatch(threadGroupsX, threadGroupsY, 1);
         m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVClear), ppUAVClear, nullptr);
         m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
+        m_pAnnotation->EndEvent();
     }
 
     float clearColor[] = {0.0f, 0.0f, 0.0f, 0.0f};
+    m_pAnnotation->BeginEvent(L"Render Pass: Clear buffers [Color, Normal, Depth]");
     m_pImmediateContext->ClearUnorderedAccessViewFloat(m_pUAVColor.Get(), clearColor);
     m_pImmediateContext->ClearUnorderedAccessViewFloat(m_pUAVNormal.Get(), clearColor);
     m_pImmediateContext->ClearUnorderedAccessViewFloat(m_pUAVDepth.Get(), clearColor);
+    m_pAnnotation->EndEvent();
+
+    m_pAnnotation->BeginEvent(L"Render Pass: Copy counters of tiles");
     m_pImmediateContext->CopyStructureCount(m_pDispathIndirectBufferArgs.Get(), 0, m_pUAVDispersionTiles.Get());
     m_pImmediateContext->CopyStructureCount(m_pDrawInstancedIndirectBufferArgs.Get(), 0, m_pUAVDispersionTiles.Get());
+    m_pAnnotation->EndEvent();
 
     {
         ID3D11SamplerState* ppSamplers[] = {
@@ -630,7 +638,7 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
             m_pUAVDepth.Get()
         };
 
-        // First pass Sample Monte Carlo
+        m_pAnnotation->BeginEvent(L"Render pass: Ray trace");
         m_PSORayTrace.Apply(m_pImmediateContext);
         m_pImmediateContext->CSSetSamplers(0, _countof(ppSamplers), ppSamplers);
         m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVResources), ppSRVResources);
@@ -638,40 +646,46 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
         m_pImmediateContext->DispatchIndirect(m_pDispathIndirectBufferArgs.Get(), 0);
         m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVClear), ppUAVClear, nullptr);
         m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
+        m_pAnnotation->EndEvent();
     }
 
     {
         ID3D11ShaderResourceView* ppSRVResources[] = {m_pSRVColor.Get(),  m_pSRVDispersionTiles.Get()};
         ID3D11UnorderedAccessView* ppUAVResources[] = {m_pUAVColorSum.Get()};
 
-        // Second pass Integrate Monte Carlo
+        m_pAnnotation->BeginEvent(L"Render Pass: Accumulate");
         m_PSOAccumulate.Apply(m_pImmediateContext);
         m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVResources), ppSRVResources);
         m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVResources), ppUAVResources, nullptr);
         m_pImmediateContext->DispatchIndirect(m_pDispathIndirectBufferArgs.Get(), 0);
         m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVClear), ppUAVClear, nullptr);
         m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
+        m_pAnnotation->EndEvent();
     }
 
     {
         ID3D11ShaderResourceView* ppSRVResources[] = {m_pSRVColorSum.Get(), m_pSRVDispersionTiles.Get()};
         ID3D11UnorderedAccessView* ppUAVResources[] = {m_pUAVToneMap.Get()};
 
-        // Tone map
+        m_pAnnotation->BeginEvent(L"Render Pass: Tone Map");
         m_PSOToneMap.Apply(m_pImmediateContext);
         m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVResources), ppSRVResources);
         m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVResources), ppUAVResources, nullptr);
         m_pImmediateContext->DispatchIndirect(m_pDispathIndirectBufferArgs.Get(), 0);
         m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVClear), ppUAVClear, nullptr);
         m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
+        m_pAnnotation->EndEvent();
     }
 
+    m_pAnnotation->BeginEvent(L"Render Pass: Blit [Tone Map] -> [Back Buffer]");
     this->Blit(m_pSRVToneMap, pRTV);
+    m_pAnnotation->EndEvent();
 
     if (m_IsDrawDegugTiles) {
         ID3D11ShaderResourceView* ppSRVResources[] = {m_pSRVDispersionTiles.Get()};
         D3D11_VIEWPORT viewport = {0.0f, 0.0f, static_cast<float>(m_ApplicationDesc.Width), static_cast<float>(m_ApplicationDesc.Height), 0.0f, 1.0f};
 
+        m_pAnnotation->BeginEvent(L"Render Pass: Debug -> [Generated tiles]");
         m_pImmediateContext->OMSetRenderTargets(1, pRTV.GetAddressOf(), nullptr);
         m_pImmediateContext->RSSetViewports(1, &viewport);
 
@@ -682,7 +696,8 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
         m_pImmediateContext->VSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
         m_PSODefault.Apply(m_pImmediateContext);
         m_pImmediateContext->RSSetViewports(0, nullptr);
-        m_pImmediateContext->OMSetRenderTargets(0, nullptr, nullptr);     
+        m_pImmediateContext->OMSetRenderTargets(0, nullptr, nullptr);
+        m_pAnnotation->EndEvent();
     }
     m_FrameIndex++;
 }

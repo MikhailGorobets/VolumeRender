@@ -81,10 +81,11 @@ protected:
     DX::ComPtr<ID3D11Resource>     m_pD3D11BackBuffersDummy[FrameCount];
     DX::ComPtr<ID3D11Resource>     m_pD3D11BackBuffers[FrameCount];
 
-    DX::ComPtr<ID3D11Device>           m_pDevice;
-    DX::ComPtr<ID3D11DeviceContext>    m_pImmediateContext;
-    DX::ComPtr<IDXGISwapChain3>        m_pSwapChain;
-    DX::ComPtr<ID3D11RenderTargetView> m_pRTV[FrameCount];
+    DX::ComPtr<ID3D11Device>              m_pDevice;
+    DX::ComPtr<ID3D11DeviceContext>       m_pImmediateContext;
+    DX::ComPtr<IDXGISwapChain3>           m_pSwapChain;
+    DX::ComPtr<ID3DUserDefinedAnnotation> m_pAnnotation;
+    DX::ComPtr<ID3D11RenderTargetView>    m_pRTV[FrameCount];
     TimePoint       m_LastFrame;
     ApplicationDesc m_ApplicationDesc;
 };

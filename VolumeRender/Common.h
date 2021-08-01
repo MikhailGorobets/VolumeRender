@@ -38,6 +38,7 @@
 #include <random>
 
 #include <dxgi1_6.h>
+#include <d3d11_1.h>
 #include <d3d11on12.h>
 #include <d3dcompiler.h>
 #include <wrl.h>

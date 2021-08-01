@@ -77,18 +77,10 @@ float GGX_Distribution(float NdotH, float alpha) {
     return aa / (M_PI * f * f);
 }
 
-float3 GGX_SampleHemisphere(float3 normal, float alpha, inout CRNG rng) {
+float3 GGX_SampleHemisphere(float3 normal, float alpha, inout CRNG rng){
     float2 e = float2(Rand(rng), Rand(rng));
     float phi = 2.0 * M_PI * e.x;
     float cosTheta = sqrt(max(0.0f, (1.0 - e.y) / (1.0 + alpha * alpha * e.y - e.y)));
-    float sinTheta = sqrt(max(0.0f, 1.0 - cosTheta * cosTheta));
-    return mul(float3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta), GetTangentSpace(normal));
-}
-
-float3 UniformSampleHemisphere(float3 normal, inout CRNG rng) {
-    float2 e = float2(Rand(rng), Rand(rng));
-    float phi = 2.0 * M_PI * e.x;
-    float cosTheta = e.y;
     float sinTheta = sqrt(max(0.0f, 1.0 - cosTheta * cosTheta));
     return mul(float3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta), GetTangentSpace(normal));
 }
@@ -225,7 +217,7 @@ void RayTrace(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID) {
         const float3 N = event.Normal;
         const float3 V = -ray.Direction;
 		
-        const float3 H = GGX_SampleHemisphere(event.Normal, event.Alpha, rng);
+        const float3 H = GGX_SampleHemisphere(N, event.Alpha, rng);
         const float3 F = FresnelSchlick(event.Specular, saturate(dot(V, H)));
 					
         const float pd = length(1 - F);
