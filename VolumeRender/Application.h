@@ -62,12 +62,29 @@ private:
 
     auto CalculateFrameTime() -> float;
 
+    auto WaitForGPU() -> void;
+
+
 protected:
-    SDL_Window* m_pWindow;
-    Microsoft::WRL::ComPtr<ID3D11Device>           m_pDevice;
-    Microsoft::WRL::ComPtr<ID3D11DeviceContext>    m_pImmediateContext;
-    Microsoft::WRL::ComPtr<IDXGISwapChain>         m_pSwapChain;
-    Microsoft::WRL::ComPtr<ID3D11RenderTargetView> m_pRTV;
-    std::chrono::high_resolution_clock::time_point m_LastFrame;
-    ApplicationDesc                                m_ApplicationDesc;
+    using TimePoint = std::chrono::high_resolution_clock::time_point;
+
+    static const uint32_t FrameCount = 3;
+
+    SDL_Window* m_pWindow = {};
+    HANDLE      m_FenceEvent = {};
+    uint32_t    m_FenceValue = {};
+    DX::ComPtr<ID3D12Device>       m_pD3D12Device;
+    DX::ComPtr<ID3D11On12Device>   m_pD3D11On12Device;
+    DX::ComPtr<ID3D12CommandQueue> m_pD3D12CmdQueue;
+    DX::ComPtr<ID3D12Fence>        m_pD3D12Fence;
+    DX::ComPtr<ID3D12Resource>     m_pD3D12BackBuffers[FrameCount];   
+    DX::ComPtr<ID3D11Resource>     m_pD3D11BackBuffersDummy[FrameCount];
+    DX::ComPtr<ID3D11Resource>     m_pD3D11BackBuffers[FrameCount];
+
+    DX::ComPtr<ID3D11Device>           m_pDevice;
+    DX::ComPtr<ID3D11DeviceContext>    m_pImmediateContext;
+    DX::ComPtr<IDXGISwapChain3>        m_pSwapChain;
+    DX::ComPtr<ID3D11RenderTargetView> m_pRTV[FrameCount];
+    TimePoint       m_LastFrame;
+    ApplicationDesc m_ApplicationDesc;
 };

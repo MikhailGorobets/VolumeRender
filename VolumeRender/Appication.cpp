@@ -36,7 +36,7 @@ Application::Application(ApplicationDesc const& desc) {
     this->InitializeImGUI();
 }
 
-Application::~Application() {
+Application::~Application() {   
     ImGui_ImplDX11_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
@@ -68,18 +68,30 @@ auto Application::Run() -> void {
         ImGui::NewFrame();
 
         this->Update(this->CalculateFrameTime());
+    
+        uint32_t frameIndex = m_pSwapChain->GetCurrentBackBufferIndex();
 
-        m_pImmediateContext->ClearRenderTargetView(m_pRTV.Get(), std::data({ 0.0f, 0.0f, 0.0f, 1.0f }));
+        m_pD3D11On12Device->AcquireWrappedResources(m_pD3D11BackBuffersDummy[frameIndex].GetAddressOf(), 1);
+        m_pD3D11On12Device->ReleaseWrappedResources(m_pD3D11BackBuffersDummy[frameIndex].GetAddressOf(), 1);
 
-        this->RenderFrame(m_pRTV);
-        this->RenderGUI(m_pRTV);
+        m_pD3D11On12Device->AcquireWrappedResources(m_pD3D11BackBuffers[frameIndex].GetAddressOf(), 1);
+        m_pImmediateContext->ClearRenderTargetView(m_pRTV[frameIndex].Get(), std::data({ 0.0f, 0.0f, 0.0f, 1.0f }));
+
+        this->RenderFrame(m_pRTV[frameIndex]);
+        this->RenderGUI(m_pRTV[frameIndex]);
 
         ImGui::Render();
-        m_pImmediateContext->OMSetRenderTargets(1, m_pRTV.GetAddressOf(), nullptr);
+        m_pImmediateContext->OMSetRenderTargets(1, m_pRTV[frameIndex].GetAddressOf(), nullptr);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+        m_pImmediateContext->OMSetRenderTargets(0, nullptr, nullptr);
 
-        m_pSwapChain->Present(m_ApplicationDesc.IsVSync ? 1 : 0, 0);
-    }
+        m_pD3D11On12Device->ReleaseWrappedResources(m_pD3D11BackBuffers[frameIndex].GetAddressOf(), 1);
+        m_pImmediateContext->Flush();
+      
+        m_pSwapChain->Present(m_ApplicationDesc.IsVSync ? 1 : 0, 0); 
+    }   
+
+    this->WaitForGPU();
 }
 
 auto Application::InitializeSDL() -> void {
@@ -91,46 +103,114 @@ auto Application::InitializeDirectX() -> void {
     SDL_SysWMinfo windowInfo = {};
     SDL_GetWindowWMInfo(m_pWindow, &windowInfo);
 
+    uint32_t dxgiFactoryFlags = 0;
+    uint32_t d3d11DeviceFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+
+#if defined(_DEBUG)
     {
-        DXGI_SWAP_CHAIN_DESC desc = {};
-        desc.BufferCount = 2;
-        desc.BufferDesc.Width = m_ApplicationDesc.Width;
-        desc.BufferDesc.Height = m_ApplicationDesc.Height;
-        desc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-        desc.BufferDesc.RefreshRate.Numerator = 60;
-        desc.BufferDesc.RefreshRate.Denominator = 1;
-        desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-        desc.OutputWindow = windowInfo.info.win.window;
-        desc.SampleDesc.Count = 1;
-        desc.SampleDesc.Quality = 0;
-        desc.Windowed = !m_ApplicationDesc.IsFullScreen;
-        desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-
-        D3D_FEATURE_LEVEL pFutureLever[] = { D3D_FEATURE_LEVEL_11_1 };
-        uint32_t createFlag = 0;
-
-#ifdef _DEBUG
-        createFlag |= D3D11_CREATE_DEVICE_DEBUG;
-#endif	
-        DX::ThrowIfFailed(D3D11CreateDeviceAndSwapChain(nullptr,
-            D3D_DRIVER_TYPE_HARDWARE,
-            nullptr,
-            createFlag,
-            pFutureLever,
-            _countof(pFutureLever),
-            D3D11_SDK_VERSION,
-            &desc,
-            m_pSwapChain.GetAddressOf(),
-            m_pDevice.GetAddressOf(), nullptr,
-            nullptr));
-
-        {
-            Microsoft::WRL::ComPtr<ID3D11Texture2D> pBackBuffer;
-            DX::ThrowIfFailed(m_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<LPVOID*>(pBackBuffer.GetAddressOf())));
-            DX::ThrowIfFailed(m_pDevice->CreateRenderTargetView(pBackBuffer.Get(), nullptr, m_pRTV.GetAddressOf()));
+        DX::ComPtr<ID3D12Debug> pDebugController;
+        if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&pDebugController)))) {
+            pDebugController->EnableDebugLayer();
+            dxgiFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
+            d3d11DeviceFlags |= D3D11_CREATE_DEVICE_DEBUG;     
         }
     }
-    m_pDevice->GetImmediateContext(m_pImmediateContext.GetAddressOf());
+#endif
+
+    auto GetHardwareAdapter = [](DX::ComPtr<IDXGIFactory> pFactorty) -> DX::ComPtr<IDXGIAdapter1> {
+        DX::ComPtr<IDXGIAdapter1> pAdapter;
+        DX::ComPtr<IDXGIFactory6> pFactortyNew;
+        pFactorty.As(&pFactortyNew);
+      
+        for (uint32_t adapterID = 0; DXGI_ERROR_NOT_FOUND != pFactortyNew->EnumAdapterByGpuPreference(adapterID, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&pAdapter)); adapterID++) {
+            DXGI_ADAPTER_DESC1 desc = {};
+            pAdapter->GetDesc1(&desc);
+
+            if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) 
+                continue;
+           
+            if (SUCCEEDED(D3D12CreateDevice(pAdapter.Get(), D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), nullptr))) 
+                break;            
+        }
+        return pAdapter;
+    };
+
+
+    DX::ComPtr<IDXGIFactory4> pFactory;
+    DX::ThrowIfFailed(CreateDXGIFactory2(dxgiFactoryFlags, IID_PPV_ARGS(&pFactory)));
+
+    DX::ComPtr<IDXGIAdapter1> pAdapter = GetHardwareAdapter(pFactory);
+    DX::ThrowIfFailed(D3D12CreateDevice(pAdapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_pD3D12Device)));
+    
+#if defined(_DEBUG)
+    DX::ComPtr<ID3D12InfoQueue> infoQueue;
+    if (SUCCEEDED(m_pD3D12Device->QueryInterface(IID_PPV_ARGS(&infoQueue)))) {
+
+        D3D12_MESSAGE_SEVERITY severities[] = {
+            D3D12_MESSAGE_SEVERITY_INFO,
+        };
+
+        D3D12_MESSAGE_ID denyIds[] = {
+            D3D12_MESSAGE_ID_INVALID_DESCRIPTOR_HANDLE
+        };
+
+        D3D12_INFO_QUEUE_FILTER filter = {};
+        filter.DenyList.NumSeverities = _countof(severities);
+        filter.DenyList.pSeverityList = severities;
+        filter.DenyList.NumIDs = _countof(denyIds);
+        filter.DenyList.pIDList = denyIds;
+        DX::ThrowIfFailed(infoQueue->PushStorageFilter(&filter));
+    }
+#endif    
+
+    {
+        D3D12_COMMAND_QUEUE_DESC desc = {};
+        desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+        desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+        DX::ThrowIfFailed(m_pD3D12Device->CreateCommandQueue(&desc, IID_PPV_ARGS(&m_pD3D12CmdQueue)));
+    }
+   
+    {
+        DXGI_SWAP_CHAIN_DESC1 desc = {};
+        desc.BufferCount = FrameCount;
+        desc.Width = m_ApplicationDesc.Width;
+        desc.Height = m_ApplicationDesc.Height;
+        desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+        desc.SampleDesc.Count = 1;
+
+        DX::ComPtr<IDXGISwapChain1> pSwapChain;
+        DX::ThrowIfFailed(pFactory->CreateSwapChainForHwnd(m_pD3D12CmdQueue.Get(), windowInfo.info.win.window, &desc, nullptr, nullptr,  &pSwapChain));
+        DX::ThrowIfFailed(pFactory->MakeWindowAssociation(windowInfo.info.win.window, DXGI_MWA_NO_ALT_ENTER));
+        DX::ThrowIfFailed(pSwapChain.As(&m_pSwapChain));
+
+    }
+   
+    {     
+        DX::ThrowIfFailed(D3D11On12CreateDevice(m_pD3D12Device.Get(), d3d11DeviceFlags, nullptr, 0, reinterpret_cast<IUnknown**>(m_pD3D12CmdQueue.GetAddressOf()), 1, 0, &m_pDevice, &m_pImmediateContext, nullptr));
+        DX::ThrowIfFailed(m_pDevice.As(&m_pD3D11On12Device));
+
+        for (uint32_t frameID = 0; frameID < FrameCount; frameID++) {
+            DX::ThrowIfFailed(m_pSwapChain->GetBuffer(frameID, IID_PPV_ARGS(&m_pD3D12BackBuffers[frameID])));
+
+            D3D11_RESOURCE_FLAGS d3d11Flags = {D3D11_BIND_RENDER_TARGET};
+            DX::ThrowIfFailed(m_pD3D11On12Device->CreateWrappedResource(m_pD3D12BackBuffers[frameID].Get(), &d3d11Flags, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET, IID_PPV_ARGS(&m_pD3D11BackBuffersDummy[frameID])));
+            DX::ThrowIfFailed(m_pD3D11On12Device->CreateWrappedResource(m_pD3D12BackBuffers[frameID].Get(), &d3d11Flags, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT, IID_PPV_ARGS(&m_pD3D11BackBuffers[frameID])));
+         
+            D3D11_RENDER_TARGET_VIEW_DESC descRTV = {};
+            descRTV.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+            descRTV.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+            DX::ThrowIfFailed(m_pDevice->CreateRenderTargetView(m_pD3D11BackBuffers[frameID].Get(), &descRTV, m_pRTV[frameID].GetAddressOf()));
+        }
+    }
+    
+    DX::ThrowIfFailed(m_pD3D12Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(m_pD3D12Fence.GetAddressOf())));
+    m_FenceEvent = CreateEvent(nullptr, false, false, nullptr);
+    if (m_FenceEvent == nullptr)
+        DX::ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+    
+    
 }
 
 auto Application::InitializeImGUI() -> void {
@@ -150,4 +230,12 @@ auto Application::CalculateFrameTime() -> float {
     auto delta = std::chrono::duration_cast<std::chrono::duration<float>>(nowTime - m_LastFrame).count();
     m_LastFrame = nowTime;
     return delta;
+}
+
+auto Application::WaitForGPU() -> void {
+    m_FenceValue++;
+
+    DX::ThrowIfFailed(m_pD3D12CmdQueue->Signal(m_pD3D12Fence.Get(), m_FenceValue));
+    DX::ThrowIfFailed(m_pD3D12Fence->SetEventOnCompletion(m_FenceValue, m_FenceEvent));
+    WaitForSingleObjectEx(m_FenceEvent, INFINITE, false);
 }

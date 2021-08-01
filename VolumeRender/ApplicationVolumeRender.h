@@ -48,7 +48,7 @@ private:
 
     auto InitializeBuffers() -> void;
 
-    auto InitilizeTileBuffer(uint32_t threadGroupsX, uint32_t threadGroupsY) -> void;
+    auto InitilizeTileBuffer() -> void;
 
     auto InitializeEnviromentMap() -> void;
 
@@ -102,6 +102,7 @@ private:
     DX::ComputePSO  m_PSORayTrace = {};
     DX::ComputePSO  m_PSOAccumulate = {};
     DX::ComputePSO  m_PSODispersion = {};
+    DX::ComputePSO  m_PSOResetTiles = {};
     DX::ComputePSO  m_PSOToneMap = {};
     DX::ComputePSO  m_PSOGenerateMipLevel = {};
     DX::ComputePSO  m_PSOComputeGradient = {};
