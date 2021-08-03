@@ -1,7 +1,4 @@
 .vs
 .vscode
 .idea
-.DS_Store
-.pdb
-x64
-packages
+build
