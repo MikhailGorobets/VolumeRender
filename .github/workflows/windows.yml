@@ -1,0 +1,30 @@
+name: Windows
+
+on: [push, pull_request]
+
+jobs:
+  build-win10:
+    strategy:
+      matrix:
+        toolset: [x64]
+        config: [Release]
+        
+    runs-on: windows-latest    
+    name: Windows 10, ${{ matrix.config }} ${{ matrix.toolset }}
+    
+    steps:
+    - name: Clone repository
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive 
+        
+    - name: Clone Windows SDK
+      uses: GuillaumeFalourd/setup-windows10-sdk-action@v1
+      with:
+        sdk-version: 19041
+    
+    - name: Configure CMake
+      run: cmake -DCMAKE_SYSTEM_VERSION="10.0.19041.0" -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{matrix.config}} -A ${{matrix.toolset}}
+      
+    - name: Build  
+      run: cmake --build ${{github.workspace}}/build --config ${{matrix.config}}  

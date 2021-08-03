@@ -24,7 +24,7 @@ git submodule update --init --recursive
 
 Build prerequisites:
 
-* Windows SDK 10.0.17763.0 or later
+* Windows SDK 10.0.19041.0 or later
 * C++ build tools
 
 Use either CMake GUI or command line tool to generate build files. For example, to generate 
@@ -35,6 +35,11 @@ navigate to the engine's root folder and run the following command:
 cmake -S . -B ./build/Win64 -G "Visual Studio 16 2019" -A x64
 ```
 
+## Supported Platforms
+
+|  Platform                                                                                                                                         | Build status                                                                                        |
+|----------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------|
+| <img src="https://user-images.githubusercontent.com/25492259/121948839-32127100-cd71-11eb-84cd-40277948cad2.png" width=22 valign="middle"> Windows | ![Build Status](https://github.com/MikhailGorobets/VolumeRender/actions/workflows/windows.yml/badge.svg) |
 
 
 ## Unity version of project 
