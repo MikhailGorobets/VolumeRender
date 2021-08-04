@@ -38,7 +38,8 @@ struct GLFWwindow;
 
 struct GLFWwindowCallbacks {
     static auto MouseButtonCallback(GLFWwindow* pWindow, int32_t button, int32_t action, int32_t modes) -> void;
-    static auto MouseMoveCallback(GLFWwindow*, double, double) -> void;
+    static auto MouseMoveCallback(GLFWwindow* pWindow, double mousePosX, double mousePosY) -> void;
+    static auto MouseScrollCallback(GLFWwindow* pWindow, double offsetX, double offsetY) -> void;
 };
 
 struct GLFWWindowState {
@@ -57,7 +58,6 @@ struct GLFWWindowState {
     MouseState MouseState[MouseButtonMax] = {};
     double PreviousMousePositionX = {};
     double PreviousMousePositionY = {};
-    bool   IsFirstPress = true;
 };
 
 

@@ -46,40 +46,14 @@ Application::~Application() {
     glfwTerminate();
 }
 
-
-
-auto Application::Run() -> void {
-
-    
+auto Application::Run() -> void { 
     glfwSetWindowUserPointer(m_pWindow, this);
     glfwSetMouseButtonCallback(m_pWindow, GLFWwindowCallbacks::MouseButtonCallback);
     glfwSetCursorPosCallback(m_pWindow, GLFWwindowCallbacks::MouseMoveCallback);
+    glfwSetScrollCallback(m_pWindow, GLFWwindowCallbacks::MouseScrollCallback);
    
-
-// glfwGetWindowSize(pWindow, &windowWidth, &windowHeight);
-//
-// double xpos, ypos;
-// glfwGetCursorPos(pWindow, &xpos, &ypos);
-// 
-// 
-//
-//  pApplication->EventMouseMove(static_cast<float>(xpos), static_cast<float>(ypos));
-
     while (!glfwWindowShouldClose(m_pWindow)) {
         glfwPollEvents();
-       // SDL_Event event;
-       // while (SDL_PollEvent(&event)) {
-       //     switch (event.type) {
-       //     case SDL_MOUSEWHEEL:
-       //         this->EventMouseWheel(static_cast<float>(event.wheel.y)); break;
-       //     case SDL_QUIT:
-       //         isRun = false; break;
-       //     default: break;
-       //     }
-       // }
-
-       // if (auto point = std::make_tuple(0, 0); SDL_GetRelativeMouseState(&std::get<0>(point), &std::get<1>(point)) & SDL_BUTTON(SDL_BUTTON_RIGHT))
-       //     this->EventMouseMove(static_cast<float>(std::get<0>(point)), static_cast<float>(std::get<1>(point)));
 
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -130,7 +104,6 @@ auto Application::InitializeDirectX() -> void {
         }
     }
 #endif
-
     auto GetHardwareAdapter = [](DX::ComPtr<IDXGIFactory> pFactorty) -> DX::ComPtr<IDXGIAdapter1> {
         DX::ComPtr<IDXGIAdapter1> pAdapter;
         DX::ComPtr<IDXGIFactory6> pFactortyNew;
@@ -148,7 +121,6 @@ auto Application::InitializeDirectX() -> void {
         }
         return pAdapter;
     };
-
 
     DX::ComPtr<IDXGIFactory4> pFactory;
     DX::ThrowIfFailed(CreateDXGIFactory2(dxgiFactoryFlags, IID_PPV_ARGS(&pFactory)));
@@ -223,9 +195,7 @@ auto Application::InitializeDirectX() -> void {
     DX::ThrowIfFailed(m_pD3D12Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(m_pD3D12Fence.GetAddressOf())));
     m_FenceEvent = CreateEvent(nullptr, false, false, nullptr);
     if (m_FenceEvent == nullptr)
-        DX::ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
-    
-    
+        DX::ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));       
 }
 
 auto Application::InitializeImGUI() -> void {
@@ -282,7 +252,6 @@ auto GLFWwindowCallbacks::MouseButtonCallback(GLFWwindow* pWindow, int32_t butto
         default:
             break;
     }  
-
 }
 
 auto GLFWwindowCallbacks::MouseMoveCallback(GLFWwindow* pWindow, double mousePosX, double mousePosY) -> void {
@@ -290,22 +259,16 @@ auto GLFWwindowCallbacks::MouseMoveCallback(GLFWwindow* pWindow, double mousePos
     auto pState = &pApplication->m_GLFWState;
 
     if (pState->MouseState[GLFWWindowState::MouseButtonRight] == GLFWWindowState::MousePress) {
-        if (pState->IsFirstPress) {
-            pState->PreviousMousePositionX = mousePosX;
-            pState->PreviousMousePositionY = mousePosY;
-            pState->IsFirstPress = false;
-        } else {
-            double dX = mousePosX - pState->PreviousMousePositionX;
-            double dY = mousePosY - pState->PreviousMousePositionY;
+         double dX = mousePosX - pState->PreviousMousePositionX;
+         double dY = mousePosY - pState->PreviousMousePositionY;
+         pApplication->EventMouseMove(static_cast<float>(dX), static_cast<float>(dY));
+    } 
 
-            pState->PreviousMousePositionX = mousePosX;
-            pState->PreviousMousePositionY = mousePosY;
-           
-            pApplication->EventMouseMove(static_cast<float>(dX), static_cast<float>(dY));
-            
-        }        
-    } else {
-        pState->IsFirstPress = true;
-    }
+    pState->PreviousMousePositionX = mousePosX;
+    pState->PreviousMousePositionY = mousePosY;
+}
 
+auto GLFWwindowCallbacks::MouseScrollCallback(GLFWwindow* pWindow, double offsetX, double offsetY) -> void {
+    auto pApplication = reinterpret_cast<Application*>(glfwGetWindowUserPointer(pWindow));
+    pApplication->EventMouseWheel(offsetY);   
 }
