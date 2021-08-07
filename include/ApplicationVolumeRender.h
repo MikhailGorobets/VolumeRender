@@ -70,9 +70,6 @@ private:
     D3D11ArrayShadeResourceView   m_pSRVVolumeIntensity;
     D3D11ArrayUnorderedAccessView m_pUAVVolumeIntensity;
 
-    DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVLight;
-    DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVLight;
-
     DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVGradient;
     DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVGradient;
 
@@ -110,7 +107,6 @@ private:
     DX::ComputePSO m_PSOGeneratePrimaryRays = {};
     DX::ComputePSO m_PSOComputeDiffuseLight = {};
 
-    //DX::ComputePSO  m_PSORayTrace = {};
     DX::ComputePSO  m_PSOAccumulate = {};
     DX::ComputePSO  m_PSODispersion = {};
     DX::ComputePSO  m_PSOResetTiles = {};

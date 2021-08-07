@@ -42,10 +42,10 @@ struct FrameBuffer {
     Hawk::Math::Mat4x4 InvWorldMatrix;
     Hawk::Math::Mat4x4 InvNormalMatrix;
 
-    float Dispersion;
+    float    Dispersion;
     uint32_t FrameIndex;
     uint32_t TraceDepth;
-    float StepSize;
+    float    StepSize;
 
     float Density;
     Hawk::Math::Vec3 BoundingBoxMin;
@@ -279,21 +279,6 @@ auto ApplicationVolumeRender::InitializeVolumeTexture() -> void {
         }
         m_pImmediateContext->Flush();
     }
-
-    {
-        DX::ComPtr<ID3D11Texture3D> pTextureLight;
-        D3D11_TEXTURE3D_DESC desc = {};
-        desc.Width = m_DimensionX;
-        desc.Height = m_DimensionY;
-        desc.Depth = m_DimensionZ;
-        desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-        desc.MipLevels = 1;
-        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
-        desc.Usage = D3D11_USAGE_DEFAULT;
-        DX::ThrowIfFailed(m_pDevice->CreateTexture3D(&desc, nullptr, pTextureLight.ReleaseAndGetAddressOf()));
-        DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureLight.Get(), nullptr, m_pSRVLight.ReleaseAndGetAddressOf()));
-        DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureLight.Get(), nullptr, m_pUAVLight.ReleaseAndGetAddressOf()));     
-    }
 }
 
 auto ApplicationVolumeRender::InitializeTransferFunction() -> void {
@@ -413,7 +398,6 @@ auto ApplicationVolumeRender::InitializeRenderTextures() -> void {
         DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureDiffuseLight.Get(), nullptr, m_pUAVRadiance.ReleaseAndGetAddressOf()));
     }
 
-
     {
         D3D11_TEXTURE2D_DESC desc = {};
         desc.ArraySize = 1;
@@ -448,7 +432,6 @@ auto ApplicationVolumeRender::InitializeRenderTextures() -> void {
         DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureDepth.Get(), nullptr, m_pUAVDepth.ReleaseAndGetAddressOf()));
     }
 
-
     {
         D3D11_TEXTURE2D_DESC desc = {};
         desc.ArraySize = 1;
@@ -482,7 +465,6 @@ auto ApplicationVolumeRender::InitializeRenderTextures() -> void {
         DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureToneMap.Get(), nullptr, m_pSRVToneMap.GetAddressOf()));
         DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureToneMap.Get(), nullptr, m_pUAVToneMap.GetAddressOf()));
     }
-
 }
 
 auto ApplicationVolumeRender::InitializeBuffers() -> void {
@@ -584,7 +566,7 @@ auto ApplicationVolumeRender::Update(float deltaTime) -> void {
         map->InvNormalMatrix = Hawk::Math::Inverse(map->NormalMatrix);
         map->StepSize = Hawk::Math::Distance(map->BoundingBoxMin, map->BoundingBoxMax) / m_StepCount;
 
-        map->Density = m_Density;   
+        map->Density = m_Density;
         map->TraceDepth = m_TraceDepth;
         map->FrameIndex = m_FrameIndex;
         map->Exposure = m_Exposure;
@@ -738,7 +720,6 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
         m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
         m_pAnnotation->EndEvent();
     }
-
 
     {
         ID3D11ShaderResourceView* ppSRVResources[] = {m_pSRVRadiance.Get(),  m_pSRVDispersionTiles.Get()};
