@@ -45,7 +45,7 @@ struct FrameBuffer {
     float Dispersion;
     uint32_t FrameIndex;
     uint32_t TraceDepth;
-    uint32_t StepCount;
+    float StepSize;
 
     float Density;
     Hawk::Math::Vec3 BoundingBoxMin;
@@ -105,7 +105,8 @@ auto ApplicationVolumeRender::InitializeShaders() -> void {
         { nullptr, nullptr}
     };
 
-    auto pBlobCSRayTrace = compileShader(L"content/Shaders/RayTracing.hlsl", "RayTrace", "cs_5_0", macros);
+    auto pBlobCSGeneratePrimaryRays = compileShader(L"content/Shaders/GenerateRays.hlsl", "GenerateRays", "cs_5_0", macros);
+    auto pBlobCSComputeDiffuseLight = compileShader(L"content/Shaders/ComputeRadiance.hlsl", "ComputeRadiance", "cs_5_0", macros);
     auto pBlobCSAccumulate = compileShader(L"content/Shaders/Accumulation.hlsl", "Accumulate", "cs_5_0", macros);
     auto pBlobCSDispersion = compileShader(L"content/Shaders/Dispersion.hlsl", "Dispersion", "cs_5_0", macros);
     auto pBlobCSToneMap = compileShader(L"content/Shaders/ToneMap.hlsl", "ToneMap", "cs_5_0", macros);
@@ -119,7 +120,8 @@ auto ApplicationVolumeRender::InitializeShaders() -> void {
     auto pBlobPSDegugTiles = compileShader(L"content/Shaders/Debug.hlsl", "DebugTilesPS", "ps_5_0", macros);
 
 
-    DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSRayTrace->GetBufferPointer(), pBlobCSRayTrace->GetBufferSize(), nullptr, m_PSORayTrace.pCS.ReleaseAndGetAddressOf()));
+    DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSGeneratePrimaryRays->GetBufferPointer(), pBlobCSGeneratePrimaryRays->GetBufferSize(), nullptr, m_PSOGeneratePrimaryRays.pCS.ReleaseAndGetAddressOf()));
+    DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSComputeDiffuseLight->GetBufferPointer(), pBlobCSComputeDiffuseLight->GetBufferSize(), nullptr, m_PSOComputeDiffuseLight.pCS.ReleaseAndGetAddressOf()));
     DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSAccumulate->GetBufferPointer(), pBlobCSAccumulate->GetBufferSize(), nullptr, m_PSOAccumulate.pCS.ReleaseAndGetAddressOf()));
     DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSDispersion->GetBufferPointer(), pBlobCSDispersion->GetBufferSize(), nullptr, m_PSODispersion.pCS.ReleaseAndGetAddressOf()));
     DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSToneMap->GetBufferPointer(), pBlobCSToneMap->GetBufferSize(), nullptr, m_PSOToneMap.pCS.ReleaseAndGetAddressOf()));
@@ -278,6 +280,20 @@ auto ApplicationVolumeRender::InitializeVolumeTexture() -> void {
         m_pImmediateContext->Flush();
     }
 
+    {
+        DX::ComPtr<ID3D11Texture3D> pTextureLight;
+        D3D11_TEXTURE3D_DESC desc = {};
+        desc.Width = m_DimensionX;
+        desc.Height = m_DimensionY;
+        desc.Depth = m_DimensionZ;
+        desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        desc.MipLevels = 1;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        DX::ThrowIfFailed(m_pDevice->CreateTexture3D(&desc, nullptr, pTextureLight.ReleaseAndGetAddressOf()));
+        DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureLight.Get(), nullptr, m_pSRVLight.ReleaseAndGetAddressOf()));
+        DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureLight.Get(), nullptr, m_pUAVLight.ReleaseAndGetAddressOf()));     
+    }
 }
 
 auto ApplicationVolumeRender::InitializeTransferFunction() -> void {
@@ -357,10 +373,10 @@ auto ApplicationVolumeRender::InitializeRenderTextures() -> void {
         desc.SampleDesc.Count = 1;
         desc.SampleDesc.Quality = 0;
 
-        Microsoft::WRL::ComPtr<ID3D11Texture2D> pTextureColor;
-        DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTextureColor.ReleaseAndGetAddressOf()));
-        DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureColor.Get(), nullptr, m_pSRVColor.ReleaseAndGetAddressOf()));
-        DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureColor.Get(), nullptr, m_pUAVColor.ReleaseAndGetAddressOf()));
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> pTextureDiffuse;
+        DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTextureDiffuse.ReleaseAndGetAddressOf()));
+        DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureDiffuse.Get(), nullptr, m_pSRVDiffuse.ReleaseAndGetAddressOf()));
+        DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureDiffuse.Get(), nullptr, m_pUAVDiffuse.ReleaseAndGetAddressOf()));
     }
 
     {
@@ -368,6 +384,41 @@ auto ApplicationVolumeRender::InitializeRenderTextures() -> void {
         desc.ArraySize = 1;
         desc.MipLevels = 1;
         desc.Format = DXGI_FORMAT_R11G11B10_FLOAT;
+        desc.Width = m_ApplicationDesc.Width;
+        desc.Height = m_ApplicationDesc.Height;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+        desc.SampleDesc.Count = 1;
+        desc.SampleDesc.Quality = 0;
+
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> pTextureSpecular;
+        DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTextureSpecular.ReleaseAndGetAddressOf()));
+        DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureSpecular.Get(), nullptr, m_pSRVSpecular.ReleaseAndGetAddressOf()));
+        DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureSpecular.Get(), nullptr, m_pUAVSpecular.ReleaseAndGetAddressOf()));
+    }
+
+    {
+        D3D11_TEXTURE2D_DESC desc = {};
+        desc.ArraySize = 1;
+        desc.MipLevels = 1;
+        desc.Format = DXGI_FORMAT_R11G11B10_FLOAT;
+        desc.Width = m_ApplicationDesc.Width;
+        desc.Height = m_ApplicationDesc.Height;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+        desc.SampleDesc.Count = 1;
+        desc.SampleDesc.Quality = 0;
+
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> pTextureDiffuseLight;
+        DX::ThrowIfFailed(m_pDevice->CreateTexture2D(&desc, nullptr, pTextureDiffuseLight.ReleaseAndGetAddressOf()));
+        DX::ThrowIfFailed(m_pDevice->CreateShaderResourceView(pTextureDiffuseLight.Get(), nullptr, m_pSRVRadiance.ReleaseAndGetAddressOf()));
+        DX::ThrowIfFailed(m_pDevice->CreateUnorderedAccessView(pTextureDiffuseLight.Get(), nullptr, m_pUAVRadiance.ReleaseAndGetAddressOf()));
+    }
+
+
+    {
+        D3D11_TEXTURE2D_DESC desc = {};
+        desc.ArraySize = 1;
+        desc.MipLevels = 1;
+        desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
         desc.Width = m_ApplicationDesc.Width;
         desc.Height = m_ApplicationDesc.Height;
         desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
@@ -509,7 +560,7 @@ auto ApplicationVolumeRender::Update(float deltaTime) -> void {
     scaleVector /= (std::max)({scaleVector.x, scaleVector.y, scaleVector.z});
 
     auto const& matrixView = m_Camera.ToMatrix();
-    Hawk::Math::Mat4x4 matrixProjection = Hawk::Math::Orthographic(m_Zoom * (m_ApplicationDesc.Width / static_cast<F32>(m_ApplicationDesc.Height)), m_Zoom, -2.0f, 2.0f);
+    Hawk::Math::Mat4x4 matrixProjection = Hawk::Math::Orthographic(m_Zoom * (m_ApplicationDesc.Width / static_cast<F32>(m_ApplicationDesc.Height)), m_Zoom, -1.0f, 1.0f);
     Hawk::Math::Mat4x4 matrixWorld = Hawk::Math::RotateX(Hawk::Math::Radians(-90.0f));
     Hawk::Math::Mat4x4 matrixNormal = Hawk::Math::Inverse(Hawk::Math::Transpose(matrixWorld));
 
@@ -531,9 +582,9 @@ auto ApplicationVolumeRender::Update(float deltaTime) -> void {
         map->InvViewMatrix = Hawk::Math::Inverse(map->InvViewMatrix);
         map->InvWorldMatrix = Hawk::Math::Inverse(map->WorldMatrix);
         map->InvNormalMatrix = Hawk::Math::Inverse(map->NormalMatrix);
+        map->StepSize = Hawk::Math::Distance(map->BoundingBoxMin, map->BoundingBoxMax) / m_StepCount;
 
-        map->Density = m_Density;
-        map->StepCount = m_StepCount;
+        map->Density = m_Density;   
         map->TraceDepth = m_TraceDepth;
         map->FrameIndex = m_FrameIndex;
         map->Exposure = m_Exposure;
@@ -571,7 +622,7 @@ auto ApplicationVolumeRender::Blit(DX::ComPtr<ID3D11ShaderResourceView> pSrc, DX
 
 auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRTV) -> void {
 
-    ID3D11UnorderedAccessView* ppUAVClear[] = {nullptr, nullptr, nullptr};
+    ID3D11UnorderedAccessView* ppUAVClear[] = {nullptr, nullptr, nullptr, nullptr};
     ID3D11ShaderResourceView* ppSRVClear[] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
 
     uint32_t threadGroupsX = static_cast<uint32_t>(std::ceil(m_ApplicationDesc.Width / 8));
@@ -609,9 +660,10 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
 
     float clearColor[] = {0.0f, 0.0f, 0.0f, 0.0f};
     m_pAnnotation->BeginEvent(L"Render Pass: Clear buffers [Color, Normal, Depth]");
-    m_pImmediateContext->ClearUnorderedAccessViewFloat(m_pUAVColor.Get(), clearColor);
+    m_pImmediateContext->ClearUnorderedAccessViewFloat(m_pUAVDiffuse.Get(), clearColor);
     m_pImmediateContext->ClearUnorderedAccessViewFloat(m_pUAVNormal.Get(), clearColor);
     m_pImmediateContext->ClearUnorderedAccessViewFloat(m_pUAVDepth.Get(), clearColor);
+    m_pImmediateContext->ClearUnorderedAccessViewFloat(m_pUAVRadiance.Get(), clearColor);
     m_pAnnotation->EndEvent();
 
     m_pAnnotation->BeginEvent(L"Render Pass: Copy counters of tiles");
@@ -633,18 +685,18 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
             m_pSRVSpecularTF.Get(),
             m_pSRVRoughnessTF.Get(),
             m_pSRVOpasityTF.Get(),
-            m_pSRVEnviroment.Get(),
             m_pSRVDispersionTiles.Get()
         };
 
         ID3D11UnorderedAccessView* ppUAVResources[] = {
-            m_pUAVColor.Get(),
+            m_pUAVDiffuse.Get(),
+            m_pUAVSpecular.Get(),
             m_pUAVNormal.Get(),
             m_pUAVDepth.Get()
         };
 
-        m_pAnnotation->BeginEvent(L"Render pass: Ray trace");
-        m_PSORayTrace.Apply(m_pImmediateContext);
+        m_pAnnotation->BeginEvent(L"Render pass: Generate Rays");
+        m_PSOGeneratePrimaryRays.Apply(m_pImmediateContext);
         m_pImmediateContext->CSSetSamplers(0, _countof(ppSamplers), ppSamplers);
         m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVResources), ppSRVResources);
         m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVResources), ppUAVResources, nullptr);
@@ -655,7 +707,41 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
     }
 
     {
-        ID3D11ShaderResourceView* ppSRVResources[] = {m_pSRVColor.Get(),  m_pSRVDispersionTiles.Get()};
+        ID3D11SamplerState* ppSamplers[] = {
+            m_pSamplerPoint.Get(),
+            m_pSamplerLinear.Get(),
+            m_pSamplerAnisotropic.Get()
+        };
+
+        ID3D11ShaderResourceView* ppSRVResources[] = {
+            m_pSRVVolumeIntensity[m_MipLevel].Get(),
+            m_pSRVOpasityTF.Get(),
+            m_pSRVDiffuse.Get(),
+            m_pSRVSpecular.Get(),
+            m_pSRVNormal.Get(),
+            m_pSRVDepth.Get(),
+            m_pSRVEnviroment.Get(),
+            m_pSRVDispersionTiles.Get()
+        };
+
+        ID3D11UnorderedAccessView* ppUAVResources[] = {
+            m_pUAVRadiance.Get()
+        };
+
+        m_pAnnotation->BeginEvent(L"Render pass: Compute Radiance");
+        m_PSOComputeDiffuseLight.Apply(m_pImmediateContext);
+        m_pImmediateContext->CSSetSamplers(0, _countof(ppSamplers), ppSamplers);
+        m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVResources), ppSRVResources);
+        m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVResources), ppUAVResources, nullptr);
+        m_pImmediateContext->DispatchIndirect(m_pDispathIndirectBufferArgs.Get(), 0);
+        m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVClear), ppUAVClear, nullptr);
+        m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVClear), ppSRVClear);
+        m_pAnnotation->EndEvent();
+    }
+
+
+    {
+        ID3D11ShaderResourceView* ppSRVResources[] = {m_pSRVRadiance.Get(),  m_pSRVDispersionTiles.Get()};
         ID3D11UnorderedAccessView* ppUAVResources[] = {m_pUAVColorSum.Get()};
 
         m_pAnnotation->BeginEvent(L"Render Pass: Accumulate");

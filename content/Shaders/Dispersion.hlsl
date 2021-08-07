@@ -51,9 +51,9 @@ float ComputeDispersion(uint3 thredID, uint lineID, Texture2D<float> sourceTextu
 void Dispersion(uint3 thredID: SV_DispatchThreadID, uint lineID: SV_GroupIndex, uint3 groupID: SV_GroupID) {
     const uint tileID = (0xFFFF & groupID.x) | ((0xFFFF & groupID.y) << 16);
        
-    float dispersionColor  = 0.4 * ComputeDispersion(thredID, lineID, TextureColorSRV);
-    float dispersionNormal = 0.3 * ComputeDispersion(thredID, lineID, TextureNormalSRV);
-    float dispersionDepth  = 0.3 * ComputeDispersion(thredID, lineID, TextureDepthSRV);
+    float dispersionColor  = 0.50 * ComputeDispersion(thredID, lineID, TextureColorSRV);
+    float dispersionNormal = 0.25 * ComputeDispersion(thredID, lineID, TextureNormalSRV);
+    float dispersionDepth  = 0.25 * ComputeDispersion(thredID, lineID, TextureDepthSRV);
     float dispersionTotal = dispersionColor + dispersionNormal + dispersionDepth;
      
     if (dispersionTotal > FrameBuffer.Dispersion && lineID == 0)

@@ -219,7 +219,6 @@ auto Application::CalculateFrameTime() -> float {
 
 auto Application::WaitForGPU() -> void {
     m_FenceValue++;
-
     DX::ThrowIfFailed(m_pD3D12CmdQueue->Signal(m_pD3D12Fence.Get(), m_FenceValue));
     DX::ThrowIfFailed(m_pD3D12Fence->SetEventOnCompletion(m_FenceValue, m_FenceEvent));
     WaitForSingleObjectEx(m_FenceEvent, INFINITE, false);

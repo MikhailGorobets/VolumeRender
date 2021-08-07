@@ -21,7 +21,6 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
 #pragma once
 
 #include "Application.h"
@@ -71,6 +70,9 @@ private:
     D3D11ArrayShadeResourceView   m_pSRVVolumeIntensity;
     D3D11ArrayUnorderedAccessView m_pUAVVolumeIntensity;
 
+    DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVLight;
+    DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVLight;
+
     DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVGradient;
     DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVGradient;
 
@@ -80,12 +82,17 @@ private:
     DX::ComPtr<ID3D11ShaderResourceView> m_pSRVOpasityTF;
     DX::ComPtr<ID3D11ShaderResourceView> m_pSRVEnviroment;
 
-    DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVColor;
+    DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVRadiance;
+    DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVRadiance;
+    
+    DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVDiffuse;
+    DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVSpecular;
     DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVNormal;
     DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVDepth;
     DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVColorSum;
 
-    DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVColor;
+    DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVDiffuse;
+    DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVSpecular;
     DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVNormal;
     DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVDepth;
     DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVColorSum;
@@ -99,7 +106,11 @@ private:
     DX::GraphicsPSO m_PSODefault = {};
     DX::GraphicsPSO m_PSOBlit = {};
     DX::GraphicsPSO m_PSODegugTiles = {};
-    DX::ComputePSO  m_PSORayTrace = {};
+
+    DX::ComputePSO m_PSOGeneratePrimaryRays = {};
+    DX::ComputePSO m_PSOComputeDiffuseLight = {};
+
+    //DX::ComputePSO  m_PSORayTrace = {};
     DX::ComputePSO  m_PSOAccumulate = {};
     DX::ComputePSO  m_PSODispersion = {};
     DX::ComputePSO  m_PSOResetTiles = {};

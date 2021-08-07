@@ -24,7 +24,6 @@
 #pragma once
 
 #include "Common.h"
-#include "GLFW/glfw3.h"
 
 struct ApplicationDesc {
     std::string Tittle = "Application <DX11>";
@@ -79,8 +78,6 @@ public:
     virtual auto RenderGUI(Microsoft::WRL::ComPtr<ID3D11RenderTargetView> pRTV) -> void = 0;
 
     virtual auto Run() -> void final;
-
-  
 
 private:
     auto InitializeSDL() -> void;

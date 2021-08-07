@@ -50,7 +50,7 @@ cbuffer ConstantFrameBuffer: register(b0) {
         float Dispersion;
         uint FrameIndex;
         uint TraceDepth;
-        uint StepCount;
+        float StepSize;
 
         float  Density;
         float3 BoundingBoxMin;
@@ -75,16 +75,16 @@ struct Intersection {
     float Max;
 };
 
-struct ScatterEvent {
-    float3 Position;
-    float3 Normal;
-    float3 Diffuse;
-    float3 Specular;
-    float Roughness;
-    float Alpha;
-    float Opacity;
-    bool IsValid;
-};
+//struct ScatterEvent {
+//    float3 Position;
+//    float3 Normal;
+//    float3 Diffuse;
+//    float3 Specular;
+//    float Roughness;
+//    float Alpha;
+//    float Opacity;
+//    bool IsValid;
+//};
 
 struct AABB {
     float3 Min;
@@ -119,7 +119,7 @@ Ray CreateCameraRay(uint2 id, float2 offset, float2 dimension) {
     float2 ncdXY = 2.0f * (id.xy + offset) / dimension - 1.0f;
     ncdXY.y *= -1.0f;
    
-    float4 rayStart = mul(FrameBuffer.InvWorldViewProjectionMatrix, float4(ncdXY, 0.0f, 1.0f));
+    float4 rayStart = mul(FrameBuffer.InvWorldViewProjectionMatrix, float4(ncdXY, -1.0f, 1.0f));
     float4 rayEnd = mul(FrameBuffer.InvWorldViewProjectionMatrix, float4(ncdXY, 1.0f, 1.0f));
 
     rayStart.xyz /= rayStart.w;
