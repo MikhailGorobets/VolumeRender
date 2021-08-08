@@ -40,7 +40,7 @@ struct PiewiseFunction {
 };
 
 template<uint32_t N = 64>
-class PiecewiseLinearFunction : PiewiseFunction<N> {
+class PiecewiseLinearFunction :public PiewiseFunction<N> {
 public:
     auto AddNode(F32 position, F32 value) -> void {
         this->Position[this->Count] = position;
@@ -60,7 +60,7 @@ public:
         if (position > this->RangeMax)
             return this->Value[this->Count - 1];
 
-        for (auto i = 1u; i < this->Count; i++) {
+        for (size_t i = 1; i < this->Count; i++) {
             auto const p1 = this->Position[i - 1];
             auto const p2 = this->Position[i];
             auto const t = (position - p1) / (p2 - p1);
@@ -83,16 +83,16 @@ public:
     auto Evaluate(F32 intensity) -> F32 { return this->PLF.Evaluate(intensity); }
 
     auto GenerateTexture(Microsoft::WRL::ComPtr<ID3D11Device> pDevice, uint32_t sampling = 64) -> Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> {
-        std::vector<uint16_t> data(sampling);
+        std::vector<uint8_t> data(sampling);
         for (auto index = 0u; index < sampling; index++)
-            data[index] = static_cast<uint16_t>(std::ceil(std::numeric_limits<uint16_t>::max() * this->Evaluate(index / static_cast<F32>(sampling - 1))));
+            data[index] = static_cast<uint8_t>(std::round(255.0f * this->Evaluate(index / static_cast<F32>(sampling - 1))));
 
         D3D11_TEXTURE1D_DESC desc = {};
         desc.Width = sampling;
         desc.MipLevels = 1;
         desc.ArraySize = 1;
         desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-        desc.Format = DXGI_FORMAT_R16_UNORM;
+        desc.Format = DXGI_FORMAT_R8_UNORM;
         desc.Usage = D3D11_USAGE_IMMUTABLE;
 
         D3D11_SUBRESOURCE_DATA initData = {};
@@ -124,13 +124,13 @@ public:
     }
 
     auto GenerateTexture(Microsoft::WRL::ComPtr<ID3D11Device> pDevice, uint32_t sampling = 64) -> Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> {
-        std::vector<Hawk::Math::Vector<uint16_t, 4>> data(sampling);
-        for (auto index = 0u; index < sampling; index++) {
+        std::vector<Hawk::Math::Vector<uint8_t, 4>> data(sampling);
+        for (size_t index = 0; index < sampling; index++) {
             Hawk::Math::Vec3 v = this->Evaluate(index / static_cast<F32>(sampling - 1));
-            uint16_t x = static_cast<uint16_t>(std::ceil(std::numeric_limits<uint16_t>::max() * v.x));
-            uint16_t y = static_cast<uint16_t>(std::ceil(std::numeric_limits<uint16_t>::max() * v.y));
-            uint16_t z = static_cast<uint16_t>(std::ceil(std::numeric_limits<uint16_t>::max() * v.z));
-            data[index] = Hawk::Math::Vector<uint16_t, 4>( x, y, z, static_cast<uint16_t>(0));
+            uint8_t x = static_cast<uint8_t>(std::round(255.0f * v.x));
+            uint8_t y = static_cast<uint8_t>(std::round(255.0f * v.y));
+            uint8_t z = static_cast<uint8_t>(std::round(255.0f * v.z));
+            data[index] = Hawk::Math::Vector<uint8_t, 4>( x, y, z, static_cast<uint8_t>(0));
         }
          
         D3D11_TEXTURE1D_DESC desc = {};
@@ -138,7 +138,7 @@ public:
         desc.MipLevels = 1;
         desc.ArraySize = 1;
         desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-        desc.Format = DXGI_FORMAT_R16G16B16A16_UNORM;
+        desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
         desc.Usage = D3D11_USAGE_IMMUTABLE;
 
         D3D11_SUBRESOURCE_DATA initData = {};

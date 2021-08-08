@@ -45,14 +45,14 @@ namespace DX {
     template<typename T>
     using ComPtr = Microsoft::WRL::ComPtr<T>;
 
-    class com_exception : public std::exception {
+    class com_exception: public std::exception {
     public:
         com_exception(HRESULT hr) : result(hr) {}
 
         virtual const char* what() const override {
             static char s_str[64] = {};
             sprintf_s(s_str, "Failure with HRESULT of %08X",
-                static_cast<unsigned int>(result));
+                      static_cast<unsigned int>(result));
             return s_str;
         }
 
@@ -77,17 +77,17 @@ namespace DX {
     }
 
     template<typename T>
-    auto CreateIndirectBuffer(ComPtr<ID3D11Device> pDevice, const T* pInitialData = nullptr) -> Microsoft::WRL::ComPtr<ID3D11Buffer> {
+    auto CreateIndirectBuffer(ComPtr<ID3D11Device> pDevice, const T& pInitialData) -> Microsoft::WRL::ComPtr<ID3D11Buffer> {
         ComPtr<ID3D11Buffer> pBuffer;
         D3D11_BUFFER_DESC desc = {};
         desc.ByteWidth = sizeof(T);
         desc.MiscFlags = D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS;
         desc.Usage = D3D11_USAGE_DEFAULT;
-        
+
         D3D11_SUBRESOURCE_DATA data = {};
-        data.pSysMem = pInitialData;
-    
-        ThrowIfFailed(pDevice->CreateBuffer(&desc, (pInitialData) ? (&data) : nullptr, pBuffer.GetAddressOf()));
+        data.pSysMem = &pInitialData;
+
+        ThrowIfFailed(pDevice->CreateBuffer(&desc, &data, pBuffer.GetAddressOf()));
         return pBuffer;
     }
 
@@ -168,11 +168,11 @@ namespace DX {
         void Map(ComPtr<ID3D11DeviceContext> pContext, ComPtr<ID3D11Buffer> pBuffer, D3D11_MAP mapType, uint32_t mapFlags) {
             //	assert(!m_pBuffer && !m_pMappedData && !m_pContext, "Object already mapped");
             Unmap();
-#ifdef _DEBUG
+        #ifdef _DEBUG
             D3D11_BUFFER_DESC desc;
             pBuffer->GetDesc(&desc);
             //	assert(sizeof(DataType) <= BuffDesc.uiSizeInBytes, "Data type size exceeds buffer size");
-#endif
+        #endif
             D3D11_MAPPED_SUBRESOURCE resource = {};
             ThrowIfFailed(pContext->Map(pBuffer.Get(), 0, mapType, mapFlags, &resource));
             m_pMappedData = static_cast<DataType*>(resource.pData);
@@ -228,7 +228,7 @@ namespace DX {
         ComPtr<ID3D11InputLayout>       pInputLayout = nullptr;
         ComPtr<ID3D11VertexShader>      pVS = nullptr;
         ComPtr<ID3D11GeometryShader>    pGS = nullptr;
-        ComPtr<ID3D11PixelShader>       pPS = nullptr;    
+        ComPtr<ID3D11PixelShader>       pPS = nullptr;
         ComPtr<ID3D11RasterizerState>   pRasterState = nullptr;
         ComPtr<ID3D11DepthStencilState> pDepthStencilState = nullptr;
         ComPtr<ID3D11BlendState>        pBlendState = nullptr;

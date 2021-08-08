@@ -142,7 +142,7 @@ void GenerateRays(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID) {
     uint2 id = GetThreadIDFromTileList(BufferDispersionTiles, groupID.x, thredID.xy);
     
     CRNG rng = InitCRND(id, FrameBuffer.FrameIndex);
-    Ray ray = CreateCameraRay(id, FrameBuffer.FrameOffset, FrameBuffer.RenderTargetDim);
+    Ray ray = CreateCameraRay(id, FrameBuffer.FrameOffset, FrameBuffer.InvRenderTargetDim, FrameBuffer.InvWorldViewProjectionMatrix);
  	
     VolumeDesc desc;
     desc.BoundingBox.Min = FrameBuffer.BoundingBoxMin;

@@ -108,7 +108,7 @@ private:
     DX::ComputePSO m_PSOComputeDiffuseLight = {};
 
     DX::ComputePSO  m_PSOAccumulate = {};
-    DX::ComputePSO  m_PSODispersion = {};
+    DX::ComputePSO  m_PSOComputeTiles = {};
     DX::ComputePSO  m_PSOResetTiles = {};
     DX::ComputePSO  m_PSOToneMap = {};
     DX::ComputePSO  m_PSOGenerateMipLevel = {};
@@ -136,15 +136,13 @@ private:
     float    m_DeltaTime = 0.0f;
     float    m_RotateSensivity = 0.25f;
     float    m_ZoomSensivity = 1.5f;
-    float    m_Dispersion = 0.0f;
     float    m_Density = 100.0f;
     float    m_Exposure = 20.0f;
     float    m_Zoom = 1.0f;
     uint32_t m_MipLevel = 0;
-    uint32_t m_TraceDepth = 2;
     uint32_t m_StepCount = 180;
     uint32_t m_FrameIndex = 0;
-    uint32_t m_SampleDispersion = 16;
+    uint32_t m_SampleDispersion = 8;
     uint32_t m_SamplingCount = 256;
 
     bool     m_IsReloadShader = false;

@@ -28,7 +28,9 @@
 #include <glfw/glfw3native.h>
 #include <imgui/imgui_impl_dx11.h>
 #include <imgui/imgui_impl_glfw.h>
+#include <implot/implot.h>
 #include <fmt/printf.h>
+
 
 Application::Application(ApplicationDesc const& desc) {
     m_ApplicationDesc = desc;
@@ -40,6 +42,7 @@ Application::Application(ApplicationDesc const& desc) {
 Application::~Application() {   
     ImGui_ImplDX11_Shutdown();
     ImGui_ImplGlfw_Shutdown();
+    ImPlot::DestroyContext();
     ImGui::DestroyContext();
 
     glfwDestroyWindow(m_pWindow);
@@ -55,11 +58,13 @@ auto Application::Run() -> void {
     while (!glfwWindowShouldClose(m_pWindow)) {
         glfwPollEvents();
 
+        this->Update(this->CalculateFrameTime());
+
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-
-        this->Update(this->CalculateFrameTime());
+      
+      
     
         uint32_t frameIndex = m_pSwapChain->GetCurrentBackBufferIndex();
         m_pD3D11On12Device->AcquireWrappedResources(m_pD3D11BackBuffersDummy[frameIndex].GetAddressOf(), 1);
@@ -68,8 +73,9 @@ auto Application::Run() -> void {
         m_pD3D11On12Device->AcquireWrappedResources(m_pD3D11BackBuffers[frameIndex].GetAddressOf(), 1);
         this->RenderFrame(m_pRTV[frameIndex]);
         this->RenderGUI(m_pRTV[frameIndex]);
-
         ImGui::Render();
+
+      
         m_pAnnotation->BeginEvent(L"Render pass: ImGui");
         m_pImmediateContext->OMSetRenderTargets(1, m_pRTV[frameIndex].GetAddressOf(), nullptr);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
@@ -201,11 +207,13 @@ auto Application::InitializeDirectX() -> void {
 auto Application::InitializeImGUI() -> void {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    ImPlot::CreateContext();
 
     auto& io = ImGui::GetIO();
     io.Fonts->AddFontFromFileTTF("content/Fonts/Roboto-Medium.ttf", 14.0f);
-
+    ImPlot::GetStyle().AntiAliasedLines = true;
     ImGui::StyleColorsDark();
+
     ImGui_ImplDX11_Init(m_pDevice.Get(), m_pImmediateContext.Get());
     ImGui_ImplGlfw_InitForOther(m_pWindow, false);
 }

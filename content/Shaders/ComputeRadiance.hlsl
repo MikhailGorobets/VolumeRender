@@ -76,14 +76,6 @@ float GGX_Distribution(float NdotH, float alpha) {
     return aa / (M_PI * f * f);
 }
 
-float3 UniformSampleHemisphere(float3 normal, inout CRNG rng) {
-    float2 e = float2(Rand(rng), Rand(rng));
-    float phi = 2.0 * M_PI * e.x;
-    float cosTheta = e.y;
-    float sinTheta = sqrt(max(0.0f, 1.0 - cosTheta * cosTheta));
-    return mul(float3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta), GetTangentSpace(normal));
-}
-
 float3 GGX_SampleHemisphere(float3 normal, float alpha, inout CRNG rng) {
     float2 e = float2(Rand(rng), Rand(rng));
     float phi = 2.0 * M_PI * e.x;
@@ -106,12 +98,12 @@ float3 GetEnvironment(float3 direction) {
     return TextureEnvironment.SampleLevel(SamplerAnisotropic, float2(phi, theta), 0);
 }
 
-GBuffer LoadGBuffer(uint2 id, float2 offset, float2 dimension) {
-    float2 ncdXY = 2.0f * (id + offset) / dimension - 1.0f;
+GBuffer LoadGBuffer(uint2 id, float2 offset, float2 invDimension, float4x4 invWVP) {
+    float2 ncdXY = 2.0f * (id + offset) * invDimension - 1.0f;
     ncdXY.y *= -1.0f;
       
-    float4 rayStart = mul(FrameBuffer.InvWorldViewProjectionMatrix, float4(ncdXY, 0.0f, 1.0f));
-    float4 rayEnd   = mul(FrameBuffer.InvWorldViewProjectionMatrix, float4(ncdXY, TextureDepth[id], 1.0f));
+    float4 rayStart = mul(invWVP, float4(ncdXY, 0.0f, 1.0f));
+    float4 rayEnd   = mul(invWVP, float4(ncdXY, TextureDepth[id], 1.0f));
     rayStart /= rayStart.w;
     rayEnd /= rayEnd.w;
     
@@ -159,7 +151,7 @@ bool RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
 void ComputeRadiance(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID) {
     uint2 id = GetThreadIDFromTileList(BufferDispersionTiles, groupID.x, thredID.xy);    
     CRNG rng = InitCRND(id, FrameBuffer.FrameIndex + 1);
-    GBuffer buffer = LoadGBuffer(id, FrameBuffer.FrameOffset, FrameBuffer.RenderTargetDim);
+    GBuffer buffer = LoadGBuffer(id, FrameBuffer.FrameOffset, FrameBuffer.InvRenderTargetDim, FrameBuffer.InvWorldViewProjectionMatrix);
 
     if (any(buffer.Diffuse)) {
         VolumeDesc desc;

@@ -47,19 +47,18 @@ cbuffer ConstantFrameBuffer: register(b0) {
         float4x4 InvWorldMatrix;
         float4x4 InvNormalMatrix;
 
-        float Dispersion;
-        uint FrameIndex;
-        uint TraceDepth;
-        float StepSize;
-
+        uint   FrameIndex;
+        float  StepSize;
+        float2 FrameOffset;
+        
+        float2 InvRenderTargetDim;
+        float2 RenderTargetDim;
+        
         float  Density;
         float3 BoundingBoxMin;
 
         float  Exposure;
         float3 BoundingBoxMax;
-
-        float2 FrameOffset;
-        float2 RenderTargetDim;
     } FrameBuffer;
 }
 
@@ -74,17 +73,6 @@ struct Intersection {
     float Min;
     float Max;
 };
-
-//struct ScatterEvent {
-//    float3 Position;
-//    float3 Normal;
-//    float3 Diffuse;
-//    float3 Specular;
-//    float Roughness;
-//    float Alpha;
-//    float Opacity;
-//    bool IsValid;
-//};
 
 struct AABB {
     float3 Min;
@@ -115,12 +103,12 @@ Intersection IntersectAABB(Ray ray, AABB aabb) {
     return intersect;
 }
 
-Ray CreateCameraRay(uint2 id, float2 offset, float2 dimension) {
-    float2 ncdXY = 2.0f * (id.xy + offset) / dimension - 1.0f;
+Ray CreateCameraRay(uint2 id, float2 offset, float2 invDimension, float4x4 invWVP) {
+    float2 ncdXY = 2.0f * (id.xy + offset) * invDimension - 1.0f;
     ncdXY.y *= -1.0f;
    
-    float4 rayStart = mul(FrameBuffer.InvWorldViewProjectionMatrix, float4(ncdXY, -1.0f, 1.0f));
-    float4 rayEnd = mul(FrameBuffer.InvWorldViewProjectionMatrix, float4(ncdXY, 1.0f, 1.0f));
+    float4 rayStart = mul(invWVP, float4(ncdXY, -1.0f, 1.0f));
+    float4 rayEnd = mul(invWVP, float4(ncdXY, 1.0f, 1.0f));
 
     rayStart.xyz /= rayStart.w;
     rayEnd.xyz /= rayEnd.w;

@@ -51,10 +51,10 @@ InputOutput GenerateOutputGS(float2 screenCoord) {
 [maxvertexcount(5)]
 void DebugTilesGS(point InputOutput input[1], inout LineStream<InputOutput> stream) {
     
-    float offsetX = (THREAD_GROUP_SIZE_X) / FrameBuffer.RenderTargetDim.x;
-    float offsetY = (THREAD_GROUP_SIZE_Y) / FrameBuffer.RenderTargetDim.y;
+    float offsetX = (THREAD_GROUP_SIZE_X) * FrameBuffer.InvRenderTargetDim.x;
+    float offsetY = (THREAD_GROUP_SIZE_Y) * FrameBuffer.InvRenderTargetDim.y;
     
-    float2 x = input[0].Position.xy + float2(-offsetX, +offsetY) + float2(-1.0f / FrameBuffer.RenderTargetDim.x, 1.0f / FrameBuffer.RenderTargetDim.y);
+    float2 x = input[0].Position.xy + float2(-offsetX, +offsetY) + float2(-FrameBuffer.InvRenderTargetDim.x, +FrameBuffer.InvRenderTargetDim.y);
     float2 y = input[0].Position.xy + float2(+offsetX, +offsetY);
     float2 z = input[0].Position.xy + float2(+offsetX, -offsetY);
     float2 w = input[0].Position.xy + float2(-offsetX, -offsetY);

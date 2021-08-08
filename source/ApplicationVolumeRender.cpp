@@ -25,7 +25,9 @@
 #include "ApplicationVolumeRender.h"
 #include <directx-tex/DDSTextureLoader.h>
 #include <imgui/imgui.h>
+#include <implot/implot.h>
 #include <nlohmann/json.hpp>
+#include <fmt/format.h>
 
 struct FrameBuffer {
     Hawk::Math::Mat4x4 ViewProjectionMatrix;
@@ -42,19 +44,18 @@ struct FrameBuffer {
     Hawk::Math::Mat4x4 InvWorldMatrix;
     Hawk::Math::Mat4x4 InvNormalMatrix;
 
-    float    Dispersion;
-    uint32_t FrameIndex;
-    uint32_t TraceDepth;
-    float    StepSize;
+    uint32_t         FrameIndex;
+    float            StepSize;
+    Hawk::Math::Vec2 FrameOffset;
+
+    Hawk::Math::Vec2 InvRenderTargetDim;
+    Hawk::Math::Vec2 RenderTargetDim;
 
     float Density;
     Hawk::Math::Vec3 BoundingBoxMin;
 
     float Exposure;
     Hawk::Math::Vec3 BoundingBoxMax;
-
-    Hawk::Math::Vec2 FrameOffset;
-    Hawk::Math::Vec2 RenderTargetDim;
 };
 
 struct DispathIndirectBuffer {
@@ -103,6 +104,7 @@ auto ApplicationVolumeRender::InitializeShaders() -> void {
         return pCodeBlob;
     };
 
+    //TODO AMD 8x8x1 NV 8x4x1
     std::string threadSizeX = std::to_string(8);
     std::string threadSizeY = std::to_string(8);
 
@@ -115,7 +117,7 @@ auto ApplicationVolumeRender::InitializeShaders() -> void {
     auto pBlobCSGeneratePrimaryRays = compileShader(L"content/Shaders/GenerateRays.hlsl", "GenerateRays", "cs_5_0", macros);
     auto pBlobCSComputeDiffuseLight = compileShader(L"content/Shaders/ComputeRadiance.hlsl", "ComputeRadiance", "cs_5_0", macros);
     auto pBlobCSAccumulate = compileShader(L"content/Shaders/Accumulation.hlsl", "Accumulate", "cs_5_0", macros);
-    auto pBlobCSDispersion = compileShader(L"content/Shaders/Dispersion.hlsl", "Dispersion", "cs_5_0", macros);
+    auto pBlobCSComputeTiles = compileShader(L"content/Shaders/ComputeTiles.hlsl", "ComputeTiles", "cs_5_0", macros);
     auto pBlobCSToneMap = compileShader(L"content/Shaders/ToneMap.hlsl", "ToneMap", "cs_5_0", macros);
     auto pBlobCSComputeGradient = compileShader(L"content/Shaders/Gradient.hlsl", "ComputeGradient", "cs_5_0", macros);
     auto pBlobCSGenerateMipLevel = compileShader(L"content/Shaders/LevelOfDetail.hlsl", "GenerateMipLevel", "cs_5_0", macros);
@@ -130,7 +132,7 @@ auto ApplicationVolumeRender::InitializeShaders() -> void {
     DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSGeneratePrimaryRays->GetBufferPointer(), pBlobCSGeneratePrimaryRays->GetBufferSize(), nullptr, m_PSOGeneratePrimaryRays.pCS.ReleaseAndGetAddressOf()));
     DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSComputeDiffuseLight->GetBufferPointer(), pBlobCSComputeDiffuseLight->GetBufferSize(), nullptr, m_PSOComputeDiffuseLight.pCS.ReleaseAndGetAddressOf()));
     DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSAccumulate->GetBufferPointer(), pBlobCSAccumulate->GetBufferSize(), nullptr, m_PSOAccumulate.pCS.ReleaseAndGetAddressOf()));
-    DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSDispersion->GetBufferPointer(), pBlobCSDispersion->GetBufferSize(), nullptr, m_PSODispersion.pCS.ReleaseAndGetAddressOf()));
+    DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSComputeTiles->GetBufferPointer(), pBlobCSComputeTiles->GetBufferSize(), nullptr, m_PSOComputeTiles.pCS.ReleaseAndGetAddressOf()));
     DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSToneMap->GetBufferPointer(), pBlobCSToneMap->GetBufferSize(), nullptr, m_PSOToneMap.pCS.ReleaseAndGetAddressOf()));
     DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSGenerateMipLevel->GetBufferPointer(), pBlobCSGenerateMipLevel->GetBufferSize(), nullptr, m_PSOGenerateMipLevel.pCS.ReleaseAndGetAddressOf()));
     DX::ThrowIfFailed(m_pDevice->CreateComputeShader(pBlobCSComputeGradient->GetBufferPointer(), pBlobCSComputeGradient->GetBufferSize(), nullptr, m_PSOComputeGradient.pCS.ReleaseAndGetAddressOf()));
@@ -463,18 +465,10 @@ auto ApplicationVolumeRender::InitializeRenderTextures() -> void {
     }
 }
 
-auto ApplicationVolumeRender::InitializeBuffers() -> void {
-
+auto ApplicationVolumeRender::InitializeBuffers() -> void {    
     m_pConstantBufferFrame = DX::CreateConstantBuffer<FrameBuffer>(m_pDevice);
-    {
-        DispathIndirectBuffer arguments = {1, 1, 1};
-        m_pDispathIndirectBufferArgs = DX::CreateIndirectBuffer<DispathIndirectBuffer>(m_pDevice, &arguments);
-    }
-
-    {
-        DrawInstancedIndirectBuffer arguments = {0, 1, 0, 0};
-        m_pDrawInstancedIndirectBufferArgs = DX::CreateIndirectBuffer<DrawInstancedIndirectBuffer>(m_pDevice, &arguments);
-    }
+    m_pDispathIndirectBufferArgs = DX::CreateIndirectBuffer<DispathIndirectBuffer>(m_pDevice, DispathIndirectBuffer{1, 1, 1});
+    m_pDrawInstancedIndirectBufferArgs = DX::CreateIndirectBuffer<DrawInstancedIndirectBuffer>(m_pDevice, DrawInstancedIndirectBuffer{0, 1, 0, 0});   
 }
 
 auto ApplicationVolumeRender::InitilizeTileBuffer() -> void {
@@ -563,21 +557,22 @@ auto ApplicationVolumeRender::Update(float deltaTime) -> void {
         map->StepSize = Hawk::Math::Distance(map->BoundingBoxMin, map->BoundingBoxMax) / m_StepCount;
 
         map->Density = m_Density;
-        map->TraceDepth = m_TraceDepth;
         map->FrameIndex = m_FrameIndex;
         map->Exposure = m_Exposure;
-        map->Dispersion = m_Dispersion;
-
+        
         map->FrameOffset = Hawk::Math::Vec2(m_RandomDistribution(m_RandomGenerator), m_RandomDistribution(m_RandomGenerator));
         map->RenderTargetDim = Hawk::Math::Vec2(static_cast<F32>(m_ApplicationDesc.Width), static_cast<F32>(m_ApplicationDesc.Height));
+        map->InvRenderTargetDim = Hawk::Math::Vec2(1.0f, 1.0f) / map->RenderTargetDim;
     }
 }
 
 auto ApplicationVolumeRender::Blit(DX::ComPtr<ID3D11ShaderResourceView> pSrc, DX::ComPtr<ID3D11RenderTargetView> pDst)-> void {
     ID3D11ShaderResourceView* ppSRVClear[] = {nullptr, nullptr, nullptr, nullptr,  nullptr, nullptr, nullptr, nullptr};
     D3D11_VIEWPORT viewport = {0.0f, 0.0f, static_cast<float>(m_ApplicationDesc.Width), static_cast<float>(m_ApplicationDesc.Height), 0.0f, 1.0f};
+    D3D11_RECT scissor = {0, 0,static_cast<int32_t>(m_ApplicationDesc.Width), static_cast<int32_t>(m_ApplicationDesc.Height)};
 
     m_pImmediateContext->OMSetRenderTargets(1, pDst.GetAddressOf(), nullptr);
+    m_pImmediateContext->RSSetScissorRects(1, &scissor);
     m_pImmediateContext->RSSetViewports(1, &viewport);
 
     // Bind PSO and Resources
@@ -590,6 +585,7 @@ auto ApplicationVolumeRender::Blit(DX::ComPtr<ID3D11ShaderResourceView> pSrc, DX
 
     // Unbind RTV's
     m_pImmediateContext->OMSetRenderTargets(0, nullptr, nullptr);
+    m_pImmediateContext->RSSetScissorRects(0, nullptr);
     m_pImmediateContext->RSSetViewports(0, nullptr);
 
     // Unbind PSO and unbind Resources
@@ -622,12 +618,12 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
         m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVClear), ppUAVClear, nullptr);
         m_pAnnotation->EndEvent();
     } else {
-        ID3D11ShaderResourceView* ppSRVResources[] = {m_pSRVToneMap.Get(), m_pSRVNormal.Get(), m_pSRVDepth.Get()};
+        ID3D11ShaderResourceView* ppSRVResources[] = {m_pSRVToneMap.Get(), m_pSRVDepth.Get()};
         ID3D11UnorderedAccessView* ppUAVResources[] = {m_pUAVDispersionTiles.Get()};
         uint32_t pCounters[] = {0};
 
         m_pAnnotation->BeginEvent(L"Render Pass: Generete computed tiles");
-        m_PSODispersion.Apply(m_pImmediateContext);
+        m_PSOComputeTiles.Apply(m_pImmediateContext);
         m_pImmediateContext->CSSetShaderResources(0, _countof(ppSRVResources), ppSRVResources);
         m_pImmediateContext->CSSetUnorderedAccessViews(0, _countof(ppUAVResources), ppUAVResources, pCounters);
         m_pImmediateContext->Dispatch(threadGroupsX, threadGroupsY, 1);
@@ -771,32 +767,63 @@ auto ApplicationVolumeRender::RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRT
 }
 
 auto ApplicationVolumeRender::RenderGUI(DX::ComPtr<ID3D11RenderTargetView> pRTV) -> void {
-    ImGui::Begin("Debug");
-    ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-    m_FrameIndex = ImGui::Checkbox("Reload shader", &m_IsReloadShader) ? 0 : m_FrameIndex;
-    m_FrameIndex = ImGui::Checkbox("Reload tranfer func", &m_IsReloadTranferFunc) ? 0 : m_FrameIndex;
-    ImGui::End();
-
+    assert(ImGui::GetCurrentContext() != nullptr && "Missing dear imgui context. Refer to examples app!");
+    
     ImGui::Begin("Settings");
-    ImGui::NewLine();
-    ImGui::SliderFloat("Rotate sentivity", &m_RotateSensivity, 0.1f, 10.0f);
-    ImGui::SliderFloat("Zoom sentivity", &m_ZoomSensivity, 0.1f, 10.0f);
-    ImGui::NewLine();
 
-    ImGui::SliderFloat("Density", &m_Density, 0.1f, 100.0f);
-    ImGui::SliderInt("Step count", (int32_t*)&m_StepCount, 1, 512);
-    ImGui::SliderInt("Trace depth", (int32_t*)&m_TraceDepth, 1, 10);
-    m_FrameIndex = ImGui::SliderInt("Mip Level", (int32_t*)&m_MipLevel, 0, m_DimensionMipLevels - 1) ? 0 : m_FrameIndex;
-    m_FrameIndex = ImGui::SliderFloat("Dispersion", &m_Dispersion, 0.0f, 0.1f, "%.4f") ? 0 : m_FrameIndex;
+    static bool isShowAppMetrics = false;
+    static bool isShowAppAbout = false;
 
-    ImGui::NewLine();
+    if (isShowAppMetrics) { 
+        ImGui::ShowMetricsWindow(&isShowAppMetrics); 
+    }
 
-    ImGui::PlotLines("Opacity", [](void* data, int idx) { return static_cast<ScalarTransferFunction1D*>(data)->Evaluate(idx / static_cast<F32>(256));  }, &m_OpacityTransferFunc, m_SamplingCount);
-
-    ImGui::NewLine();
-    ImGui::SliderFloat("Exposure", &m_Exposure, 4.0f, 100.0f);
-    ImGui::NewLine();
-    ImGui::Checkbox("DEBUG: Draw tiles", &m_IsDrawDegugTiles);
-
+    if (isShowAppAbout) {
+        ImGui::ShowAboutWindow(&isShowAppAbout); 
+    }
+ 
+    ImGui::Begin("Transfer Functions");
+    if (ImPlot::BeginPlot("Opacity", 0, 0, ImVec2(-1, 175), 0, ImPlotAxisFlags_None, ImPlotAxisFlags_None)) {
+        std::vector<ImVec2> opacity;
+        opacity.resize(m_SamplingCount);
+       
+        for (size_t index = 0; index < m_SamplingCount; index++) {
+            float x = (index / static_cast<float>(m_SamplingCount - 1));
+            float y = m_OpacityTransferFunc.Evaluate(x);
+            opacity[index] = ImVec2(x * (m_OpacityTransferFunc.PLF.RangeMax - m_OpacityTransferFunc.PLF.RangeMin) + m_OpacityTransferFunc.PLF.RangeMin, y);
+        }
+        ImPlot::PushStyleVar(ImPlotStyleVar_FillAlpha, 0.25f);
+        ImPlot::PlotShaded("Opacity", &opacity[0].x, &opacity[0].y, std::size(opacity), 0, 0, sizeof(ImVec2));
+        ImPlot::PopStyleVar();
+        
+        ImPlot::PlotLine("Opacity", &opacity[0].x, &opacity[0].y, std::size(opacity), 0, sizeof(ImVec2));
+        ImPlot::EndPlot();
+    }
     ImGui::End();
+    
+
+    if (ImGui::CollapsingHeader("Camera")) {
+        ImGui::SliderFloat("Rotate sentivity", &m_RotateSensivity, 0.1f, 10.0f);
+        ImGui::SliderFloat("Zoom sentivity", &m_ZoomSensivity, 0.1f, 10.0f);
+    }
+    
+    if (ImGui::CollapsingHeader("Volume")) {
+        ImGui::SliderFloat("Density", &m_Density, 0.1f, 100.0f);
+        ImGui::SliderInt("Step count", (int32_t*)&m_StepCount, 1, 512);
+        m_FrameIndex = ImGui::SliderInt("Mip Level", (int32_t*)&m_MipLevel, 0, m_DimensionMipLevels - 1) ? 0 : m_FrameIndex;
+    }
+    
+    if (ImGui::CollapsingHeader("Post-Processing")) {
+        ImGui::SliderFloat("Exposure", &m_Exposure, 4.0f, 100.0f);  
+    }
+
+    if (ImGui::CollapsingHeader("Debug")) {
+        ImGui::Checkbox("Show computed tiles", &m_IsDrawDegugTiles);
+    }
+
+    ImGui::Checkbox("Show metrics", &isShowAppMetrics);
+    ImGui::Checkbox("Show about", &isShowAppAbout);
+    
+    ImGui::End();
+
 }
