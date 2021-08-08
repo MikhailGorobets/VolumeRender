@@ -147,10 +147,7 @@ auto ApplicationVolumeRender::InitializeShaders() -> void {
 
 }
 
-auto ApplicationVolumeRender::InitializeVolumeTexture() -> void {
-    
-  
-
+auto ApplicationVolumeRender::InitializeVolumeTexture() -> void {    
     std::unique_ptr<FILE, decltype(&fclose)> pFile(fopen("content/Textures/manix.dat", "rb"), fclose);
     if (!pFile) 
         throw std::runtime_error("Failed to open file: " + std::string("Data/Textures/manix.dat"));
@@ -163,13 +160,12 @@ auto ApplicationVolumeRender::InitializeVolumeTexture() -> void {
     fread(reinterpret_cast<char*>(intensity.data()), sizeof(uint16_t), m_DimensionX * m_DimensionY * m_DimensionZ, pFile.get());    
     m_DimensionMipLevels = static_cast<uint16_t>(std::ceil(std::log2(std::max(std::max(m_DimensionX, m_DimensionY), m_DimensionZ)))) + 1;  
 
-    uint16_t tmin = 0 << 12; // Min HU [0, 4096]
-    uint16_t tmax = 1 << 12; // Max HU [0, 4096]
-
     auto NormalizeIntensity = [](uint16_t intensity, uint16_t min, uint16_t max) -> uint16_t {
         return static_cast<uint16_t>(std::round(std::numeric_limits<uint16_t>::max() * ((intensity - min) / static_cast<F32>(max - min))));
     };
 
+    uint16_t tmin = 0 << 12; // Min HU [0, 4096]
+    uint16_t tmax = 1 << 12; // Max HU [0, 4096]
     for (size_t index = 0u; index < std::size(intensity); index++) 
         intensity[index] = NormalizeIntensity(intensity[index], tmin, tmax);
     
@@ -326,15 +322,13 @@ auto ApplicationVolumeRender::InitializeTransferFunction() -> void {
 }
 
 auto ApplicationVolumeRender::InitializeSamplerStates() -> void {
-    auto createSamplerState = [this](auto filter, auto addressMode) -> DX::ComPtr<ID3D11SamplerState> {
-        Hawk::Math::Vec4 color = {0.0f, 0.0f, 0.0f, 0.0f};
-
+    auto createSamplerState = [this](auto filter, auto addressMode) -> DX::ComPtr<ID3D11SamplerState> {      
         D3D11_SAMPLER_DESC desc = {};
         desc.Filter = filter;
         desc.AddressU = addressMode;
         desc.AddressV = addressMode;
         desc.AddressW = addressMode;
-        desc.MaxAnisotropy = (m_pDevice->GetFeatureLevel() > D3D_FEATURE_LEVEL_9_1) ? D3D11_MAX_MAXANISOTROPY : 2;
+        desc.MaxAnisotropy = D3D11_MAX_MAXANISOTROPY;
         desc.MaxLOD = FLT_MAX;
         desc.ComparisonFunc = D3D11_COMPARISON_NEVER;
 
@@ -349,7 +343,6 @@ auto ApplicationVolumeRender::InitializeSamplerStates() -> void {
 }
 
 auto ApplicationVolumeRender::InitializeRenderTextures() -> void {
-
     {
         D3D11_TEXTURE2D_DESC desc = {};
         desc.ArraySize = 1;
