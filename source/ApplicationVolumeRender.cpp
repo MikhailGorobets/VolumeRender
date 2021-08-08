@@ -73,7 +73,7 @@ struct DrawInstancedIndirectBuffer {
 ApplicationVolumeRender::ApplicationVolumeRender(ApplicationDesc const& desc)
     : Application(desc)
     , m_RandomGenerator(m_RandomDevice())
-    , m_RandomDistribution(0.0f, 1.0f) {
+    , m_RandomDistribution(-0.5f, +0.5f) {
 
     this->InitializeShaders();
     this->InitializeTransferFunction();
@@ -91,7 +91,14 @@ auto ApplicationVolumeRender::InitializeShaders() -> void {
         DX::ComPtr<ID3DBlob> pCodeBlob;
         DX::ComPtr<ID3DBlob> pErrorBlob;
 
-        if (FAILED(D3DCompileFromFile(fileName, macros, D3D_COMPILE_STANDARD_FILE_INCLUDE, entrypoint, target, 0, 0, pCodeBlob.GetAddressOf(), pErrorBlob.GetAddressOf())))
+        uint32_t flags = 0;
+        #if defined(_DEBUG)
+            flags |= D3DCOMPILE_DEBUG;
+        #else
+            flags |= D3DCOMPILE_OPTIMIZATION_LEVEL3;
+        #endif
+
+        if (FAILED(D3DCompileFromFile(fileName, macros, D3D_COMPILE_STANDARD_FILE_INCLUDE, entrypoint, target, flags, 0, pCodeBlob.GetAddressOf(), pErrorBlob.GetAddressOf())))
             throw std::runtime_error(static_cast<const char*>(pErrorBlob->GetBufferPointer()));
         return pCodeBlob;
     };
@@ -156,20 +163,15 @@ auto ApplicationVolumeRender::InitializeVolumeTexture() -> void {
     uint16_t tmin = std::numeric_limits<uint16_t>::max();
     uint16_t tmax = std::numeric_limits<uint16_t>::min();
 
-    auto t1 = std::chrono::high_resolution_clock::now();
     for (auto index = 0u; index < std::size(data); index++) {
         file.read(reinterpret_cast<char*>(&data[index]), sizeof(uint16_t));
         tmin = std::min(tmin, data[index]);
         tmax = std::max(tmax, data[index]);
     }
 
-    auto t2 = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
-
-    for (size_t index = 0u; index < std::size(intensity); index++) {
+    for (size_t index = 0u; index < std::size(intensity); index++) 
         intensity[index] = static_cast<uint16_t>(std::ceil(std::numeric_limits<uint16_t>::max() * ((data[index] - tmin) / static_cast<F32>(tmax - tmin))));
-    }
-
+    
     {
         DX::ComPtr<ID3D11Texture3D> pTextureIntensity;
         D3D11_TEXTURE3D_DESC desc = {};

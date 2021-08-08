@@ -110,7 +110,7 @@ GBuffer LoadGBuffer(uint2 id, float2 offset, float2 dimension) {
     float2 ncdXY = 2.0f * (id + offset) / dimension - 1.0f;
     ncdXY.y *= -1.0f;
       
-    float4 rayStart = mul(FrameBuffer.InvWorldViewProjectionMatrix, float4(ncdXY, 0, 1.0f));
+    float4 rayStart = mul(FrameBuffer.InvWorldViewProjectionMatrix, float4(ncdXY, 0.0f, 1.0f));
     float4 rayEnd   = mul(FrameBuffer.InvWorldViewProjectionMatrix, float4(ncdXY, TextureDepth[id], 1.0f));
     rayStart /= rayStart.w;
     rayEnd /= rayEnd.w;
@@ -161,7 +161,7 @@ void ComputeRadiance(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID)
     CRNG rng = InitCRND(id, FrameBuffer.FrameIndex + 1);
     GBuffer buffer = LoadGBuffer(id, FrameBuffer.FrameOffset, FrameBuffer.RenderTargetDim);
 
-    if (length(buffer.Diffuse) > 0.0f) {
+    if (any(buffer.Diffuse)) {
         VolumeDesc desc;
         desc.BoundingBox.Min = FrameBuffer.BoundingBoxMin;
         desc.BoundingBox.Max = FrameBuffer.BoundingBoxMax;

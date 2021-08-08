@@ -13,7 +13,6 @@ float Luminance(float3 color) {
     return dot(float3(0.2126, 0.7152, 0.0722), color);
 }
 
-
 float ComputeAverage(uint lineID) {
     for (uint stride = WAVEFRONT_SIZE / 2; stride > 0; stride = stride >> 1) {
         if (lineID < stride) {
@@ -45,7 +44,6 @@ float ComputeDispersion(uint3 thredID, uint lineID, Texture2D<float> sourceTextu
     GroupMemoryBarrierWithGroupSync();
     return ComputeAverage(lineID);;
 }
-
 
 [numthreads(8, 8, 1)]
 void Dispersion(uint3 thredID: SV_DispatchThreadID, uint lineID: SV_GroupIndex, uint3 groupID: SV_GroupID) {
