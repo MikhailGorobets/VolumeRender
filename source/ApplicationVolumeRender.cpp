@@ -148,29 +148,30 @@ auto ApplicationVolumeRender::InitializeShaders() -> void {
 }
 
 auto ApplicationVolumeRender::InitializeVolumeTexture() -> void {
-    std::ifstream file("content/Textures/manix.dat", std::ifstream::binary);
-    if (!file.is_open())
+    
+  
+
+    std::unique_ptr<FILE, decltype(&fclose)> pFile(fopen("content/Textures/manix.dat", "rb"), fclose);
+    if (!pFile) 
         throw std::runtime_error("Failed to open file: " + std::string("Data/Textures/manix.dat"));
 
-    file.read(reinterpret_cast<char*>(&m_DimensionX), sizeof(uint16_t));
-    file.read(reinterpret_cast<char*>(&m_DimensionY), sizeof(uint16_t));
-    file.read(reinterpret_cast<char*>(&m_DimensionZ), sizeof(uint16_t));
-    m_DimensionMipLevels = static_cast<uint16_t>(std::ceil(std::log2(std::max(std::max(m_DimensionX, m_DimensionY), m_DimensionZ)))) + 1;
+    fread(reinterpret_cast<char*>(&m_DimensionX), sizeof(uint16_t), 1, pFile.get());
+    fread(reinterpret_cast<char*>(&m_DimensionY), sizeof(uint16_t), 1, pFile.get());
+    fread(reinterpret_cast<char*>(&m_DimensionZ), sizeof(uint16_t), 1, pFile.get());    
 
-    std::vector<uint16_t> data(size_t(m_DimensionX) * size_t(m_DimensionY) * size_t(m_DimensionZ));
     std::vector<uint16_t> intensity(size_t(m_DimensionX) * size_t(m_DimensionY) * size_t(m_DimensionZ));
+    fread(reinterpret_cast<char*>(intensity.data()), sizeof(uint16_t), m_DimensionX * m_DimensionY * m_DimensionZ, pFile.get());    
+    m_DimensionMipLevels = static_cast<uint16_t>(std::ceil(std::log2(std::max(std::max(m_DimensionX, m_DimensionY), m_DimensionZ)))) + 1;  
 
-    uint16_t tmin = std::numeric_limits<uint16_t>::max();
-    uint16_t tmax = std::numeric_limits<uint16_t>::min();
+    uint16_t tmin = 0 << 12; // Min HU [0, 4096]
+    uint16_t tmax = 1 << 12; // Max HU [0, 4096]
 
-    for (auto index = 0u; index < std::size(data); index++) {
-        file.read(reinterpret_cast<char*>(&data[index]), sizeof(uint16_t));
-        tmin = std::min(tmin, data[index]);
-        tmax = std::max(tmax, data[index]);
-    }
+    auto NormalizeIntensity = [](uint16_t intensity, uint16_t min, uint16_t max) -> uint16_t {
+        return static_cast<uint16_t>(std::round(std::numeric_limits<uint16_t>::max() * ((intensity - min) / static_cast<F32>(max - min))));
+    };
 
     for (size_t index = 0u; index < std::size(intensity); index++) 
-        intensity[index] = static_cast<uint16_t>(std::ceil(std::numeric_limits<uint16_t>::max() * ((data[index] - tmin) / static_cast<F32>(tmax - tmin))));
+        intensity[index] = NormalizeIntensity(intensity[index], tmin, tmax);
     
     {
         DX::ComPtr<ID3D11Texture3D> pTextureIntensity;

@@ -202,7 +202,7 @@ void ComputeRadiance(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID)
             ray.Direction = L;
             throughput = (1 - F) * buffer.Diffuse / (1 - pdf);
         }
-        
+             
         bool isIntersect = RayMarching(ray, desc, rng);     
         TextureRadianceAV[id] = !isIntersect * throughput * GetEnvironment(mul((float3x3)FrameBuffer.NormalMatrix, ray.Direction));;
     }

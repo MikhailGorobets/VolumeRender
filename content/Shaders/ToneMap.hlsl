@@ -22,7 +22,6 @@
  * SOFTWARE.
  */
 
-
 #include "Common.hlsl"
 
 Texture2D<float4>   TextureHDR : register(t0);
