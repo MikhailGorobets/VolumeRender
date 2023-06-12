@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright(c) 2021 Mikhail Gorobets
+ * Copyright(c) 2021-2023 Mikhail Gorobets
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this softwareand associated documentation files(the "Software"), to deal
@@ -24,24 +24,28 @@
 
 #include "Common.hlsl"
 
-StructuredBuffer<uint> BufferDispersionTiles: register(t0);
+StructuredBuffer<uint> BufferDispersionTiles : register(t0);
 
-struct InputOutput {
-    float4 Position: SV_Position;
+struct InputOutput
+{
+    float4 Position : SV_Position;
 };
 
-float2 ScreenSpaceToNDC(float2 pixel) {
+float2 ScreenSpaceToNDC(float2 pixel)
+{
     float2 ncdXY = 2.0f * (pixel.xy) / FrameBuffer.RenderTargetDim - 1.0f;
     ncdXY.y *= -1.0f;
     return ncdXY;
 }
 
-void DebugTilesVS(uint id: SV_VertexID, out InputOutput output) {
+void DebugTilesVS(uint id : SV_VertexID, out InputOutput output)
+{
     uint2 pixel = GetThreadIDFromTileList(BufferDispersionTiles, id, uint2(THREAD_GROUP_SIZE_X / 2, THREAD_GROUP_SIZE_Y / 2));
     output.Position = float4(ScreenSpaceToNDC(float2(pixel.x, pixel.y)), 0.0, 1.0);
 }
 
-InputOutput GenerateOutputGS(float2 screenCoord) {
+InputOutput GenerateOutputGS(float2 screenCoord)
+{
     InputOutput result;
     result.Position = float4(screenCoord, 0.0, 1.0);
     return result;
@@ -49,8 +53,8 @@ InputOutput GenerateOutputGS(float2 screenCoord) {
 
 
 [maxvertexcount(5)]
-void DebugTilesGS(point InputOutput input[1], inout LineStream<InputOutput> stream) {
-    
+void DebugTilesGS(point InputOutput input[1], inout LineStream<InputOutput> stream)
+{
     float offsetX = (THREAD_GROUP_SIZE_X) * FrameBuffer.InvRenderTargetDim.x;
     float offsetY = (THREAD_GROUP_SIZE_Y) * FrameBuffer.InvRenderTargetDim.y;
     
@@ -67,6 +71,7 @@ void DebugTilesGS(point InputOutput input[1], inout LineStream<InputOutput> stre
     stream.RestartStrip();
 }
 
-float4 DebugTilesPS(InputOutput input): SV_TARGET0 {
+float4 DebugTilesPS(InputOutput input) : SV_TARGET0
+{
     return float4(0.0, 0.0, 1.0, 1.0f);
 }

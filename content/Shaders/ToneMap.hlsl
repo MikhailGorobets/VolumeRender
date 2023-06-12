@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright(c) 2021 Mikhail Gorobets
+ * Copyright(c) 2021-2023 Mikhail Gorobets
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this softwareand associated documentation files(the "Software"), to deal
@@ -24,15 +24,17 @@
 
 #include "Common.hlsl"
 
-Texture2D<float4>   TextureHDR : register(t0);
+Texture2D<float4> TextureHDR : register(t0);
 RWTexture2D<float4> TextureLDR : register(u0);
-StructuredBuffer<uint> BufferDispersionTiles: register(t1);
+StructuredBuffer<uint> BufferDispersionTiles : register(t1);
 
-float3 Uncharted2Function(float A, float B, float C, float D, float E, float F, float3 x) {
+float3 Uncharted2Function(float A, float B, float C, float D, float E, float F, float3 x)
+{
     return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
 }
 
-float3 ToneMapUncharted2Function(float3 x, float exposure) {
+float3 ToneMapUncharted2Function(float3 x, float exposure)
+{
     const float A = 0.15;
     const float B = 0.50;
     const float C = 0.10;
@@ -41,13 +43,13 @@ float3 ToneMapUncharted2Function(float3 x, float exposure) {
     const float F = 0.30;
     const float W = 11.2;
 
-    float3 numerator   = Uncharted2Function(A, B, C, D, E, F, x) * exposure;
+    float3 numerator = Uncharted2Function(A, B, C, D, E, F, x) * exposure;
     float3 denominator = Uncharted2Function(A, B, C, D, E, F, W);
-
     return numerator / denominator;
 }
 
-float3 LinearToSRGB(float3 color) {
+float3 LinearToSRGB(float3 color)
+{
     float3 sRGBLo = color * 12.92;
     const float powExp = 1.0 / 2.2f;
     float3 sRGBHi = (pow(abs(color), float3(powExp, powExp, powExp)) * 1.055) - 0.055;
@@ -59,7 +61,8 @@ float3 LinearToSRGB(float3 color) {
 }
 
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, 1)]
-void ToneMap(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID) {
+void ToneMap(uint3 thredID : SV_GroupThreadID, uint3 groupID : SV_GroupID)
+{
     uint2 id = GetThreadIDFromTileList(BufferDispersionTiles, groupID.x, thredID.xy);
     float3 colorHDR = TextureHDR.Load(int3(id.xy, 0)).xyz;
     TextureLDR[id] = float4(ToneMapUncharted2Function(colorHDR, FrameBuffer.Exposure), 1.0f);

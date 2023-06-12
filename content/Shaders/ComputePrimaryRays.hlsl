@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright(c) 2021 Mikhail Gorobets
+ * Copyright(c) 2021-2023 Mikhail Gorobets
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this softwareand associated documentation files(the "Software"), to deal
@@ -24,65 +24,74 @@
 
 #include "Common.hlsl"
 
-struct VolumeDesc {
-    AABB  BoundingBox;
+struct VolumeDesc
+{
+    AABB BoundingBox;
     float StepSize;
     float DensityScale;
 };
 
-struct ScatterEvent {
+struct ScatterEvent
+{
     float3 Position;
     float3 Normal;
     float3 Diffuse;
     float3 Specular;
-    float  Roughness;
-    bool   IsValid;
+    float Roughness;
+    bool IsValid;
 };
 
-Texture3D<float>  TextureVolumeIntensity: register(t0);
-Texture3D<float4> TextureVolumeGradient: register(t1);
-Texture1D<float3> TextureTransferFunctionDiffuse: register(t2);
-Texture1D<float3> TextureTransferFunctionSpecular: register(t3);
-Texture1D<float1> TextureTransferFunctionRoughness: register(t4);
-Texture1D<float1> TextureTransferFunctionOpacity: register(t5);
-StructuredBuffer<uint> BufferDispersionTiles: register(t6);
+Texture3D<float> TextureVolumeIntensity : register(t0);
+Texture3D<float3> TextureVolumeGradient : register(t1);
+Texture1D<float3> TextureTransferFunctionDiffuse : register(t2);
+Texture1D<float3> TextureTransferFunctionSpecular : register(t3);
+Texture1D<float1> TextureTransferFunctionRoughness : register(t4);
+Texture1D<float1> TextureTransferFunctionOpacity : register(t5);
+StructuredBuffer<uint> BufferDispersionTiles : register(t6);
 
-RWTexture2D<float3> TextureDiffuseUAV: register(u0);
-RWTexture2D<float3> TextureSpecularUAV: register(u1);
-RWTexture2D<float4> TextureNormalUAV: register(u2);
-RWTexture2D<float>  TextureDepthUAV: register(u3);
+RWTexture2D<float3> TextureDiffuseUAV : register(u0);
+RWTexture2D<float3> TextureSpecularUAV : register(u1);
+RWTexture2D<float4> TextureNormalUAV : register(u2);
+RWTexture2D<float> TextureDepthUAV : register(u3);
 
-SamplerState SamplerPoint: register(s0);
-SamplerState SamplerLinear: register(s1);
-SamplerState SamplerAnisotropic: register(s2);
+SamplerState SamplerPoint : register(s0);
+SamplerState SamplerLinear : register(s1);
+SamplerState SamplerAnisotropic : register(s2);
 
 
-float GetIntensity(VolumeDesc desc, float3 position) {
+float GetIntensity(VolumeDesc desc, float3 position)
+{
     return TextureVolumeIntensity.SampleLevel(SamplerLinear, GetNormalizedTexcoord(position, desc.BoundingBox), 0);
 }
 
-float4 GetGradient(VolumeDesc desc, float3 position) {
+float3 GetGradient(VolumeDesc desc, float3 position)
+{
     return TextureVolumeGradient.SampleLevel(SamplerLinear, GetNormalizedTexcoord(position, desc.BoundingBox), 0);
 }
  
-float GetOpacity(VolumeDesc desc, float3 position) {
+float GetOpacity(VolumeDesc desc, float3 position)
+{
     return TextureTransferFunctionOpacity.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
 }
 
-float3 GetDiffuse(VolumeDesc desc, float3 position) {
+float3 GetDiffuse(VolumeDesc desc, float3 position)
+{
     return TextureTransferFunctionDiffuse.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
 }
 
-float3 GetSpecular(VolumeDesc desc, float3 position) {
+float3 GetSpecular(VolumeDesc desc, float3 position)
+{
     return TextureTransferFunctionSpecular.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
 }
 
-float GetRoughness(VolumeDesc desc, float3 position) {
+float GetRoughness(VolumeDesc desc, float3 position)
+{
     return TextureTransferFunctionRoughness.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
 }
 
 
-ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
+ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng)
+{
     ScatterEvent event;
     event.Position = float3(0.0f, 0.0f, 0.0f);
     event.Normal = float3(0.0f, 0.0f, 0.0f);
@@ -100,14 +109,15 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
     const float minT = max(intersect.Min, ray.Min);
     const float maxT = min(intersect.Max, ray.Max);
     
-    const float threshold = -log(Rand(rng)) / desc.DensityScale;
+    const float threshold = -log(1.0 - Rand(rng)) / desc.DensityScale;
 	
     float sum = 0.0f;
     float t = minT + Rand(rng) * desc.StepSize;
     float3 position = float3(0.0, 0.0, 0.0f);
     
     [loop]
-    while (sum < threshold) {
+    while (sum < threshold)
+    {
         position = ray.Origin + t * ray.Direction;
         [branch]
         if (t >= maxT)
@@ -117,20 +127,21 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
         t += desc.StepSize;
     }
    
-    const float4 gradient = GetGradient(desc, position);
+    const float3 gradient = GetGradient(desc, position);
+    const precise float factor = rsqrt(dot(gradient, gradient));
 	
     [branch]
-    if (gradient.a < FLT_EPSILON) 
+    if (isnan(factor)) 
         return event;
     
     const float3 diffuse = GetDiffuse(desc, position);
     const float3 specular = GetSpecular(desc, position);
     const float roughness = GetRoughness(desc, position);
+    const float3 normal = dot(gradient, -ray.Direction) > 0.0f ? gradient * factor : -gradient * factor;
     
     event.IsValid = true;
-    event.Normal = -normalize(gradient.xyz);
-    event.Normal = dot(event.Normal, -ray.Direction) < 0.0f ? -event.Normal : event.Normal;
-    event.Position = position + 0.001 * event.Normal; 
+    event.Normal = normal;
+    event.Position = position + 0.01 * normal;
     event.Diffuse = diffuse;
     event.Specular = specular;
     event.Roughness = roughness;
@@ -138,7 +149,8 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng) {
 }
 
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, 1)]
-void GenerateRays(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID) {
+void GenerateRays(uint3 thredID : SV_GroupThreadID, uint3 groupID : SV_GroupID)
+{
     uint2 id = GetThreadIDFromTileList(BufferDispersionTiles, groupID.x, thredID.xy);
     
     CRNG rng = InitCRND(id, FrameBuffer.FrameIndex);
@@ -151,17 +163,18 @@ void GenerateRays(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID) {
     desc.DensityScale = FrameBuffer.Density;
        
     ScatterEvent event = RayMarching(ray, desc, rng);
-    if (event.IsValid) {
+    if (event.IsValid)
+    {
         float3 normal = { 0.0f, 0.0f, 0.0f };
         float4 position = { 0.0f, 0.0f, 0.0f, 0.0f };
         
-        normal = event.Normal; 
+        normal = event.Normal;
         position = mul(FrameBuffer.WorldViewProjectionMatrix, float4(event.Position, 1.0));
         position /= position.w;
    
         TextureDiffuseUAV[id] = event.Diffuse;
         TextureSpecularUAV[id] = event.Specular;
         TextureNormalUAV[id] = float4(normal, event.Roughness);
-        TextureDepthUAV[id] = position.z;
+        TextureDepthUAV[id] = saturate(position.z);
     }
 }

@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright(c) 2021 Mikhail Gorobets
+ * Copyright(c) 2021-2023 Mikhail Gorobets
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this softwareand associated documentation files(the "Software"), to deal
@@ -22,14 +22,20 @@
  * SOFTWARE.
  */
 
-Texture2D<float4> TextureSrc : register(t0);
-SamplerState      SamplerPoint : register(s0);
+SamplerState LinearSampler : register(s0);
+Texture3D<float> TextureSrc : register(t0);
+RWTexture3D<float> TextureDst : register(u0);
 
-void BlitVS(uint id : SV_VertexID, out float4 position : SV_Position, out float2 texcoord : TEXCOORD) {
-    texcoord = float2((id << 1) & 2, id & 2);
-    position = float4(texcoord * float2(2, -2) + float2(-1, 1), 1, 1);
+float Mip(uint3 position)
+{
+    float3 dimension;
+    TextureDst.GetDimensions(dimension.x, dimension.y, dimension.z);
+    float3 texcoord = (position.xyz + float3(0.5, 0.5, 0.5)) / dimension;
+    return TextureSrc.SampleLevel(LinearSampler, texcoord, 0);
 }
 
-float4 BlitPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : SV_TARGET0 {
-    return TextureSrc.Sample(SamplerPoint, texcoord);
+[numthreads(4, 4, 4)]
+void GenerateMipLevel(uint3 thredID : SV_DispatchThreadID, uint lineID : SV_GroupIndex)
+{
+    TextureDst[thredID] = Mip(thredID);
 }
