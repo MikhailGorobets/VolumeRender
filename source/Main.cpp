@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright(c) 2021 Mikhail Gorobets
+ * Copyright(c) 2021-2023 Mikhail Gorobets
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this softwareand associated documentation files(the "Software"), to deal
@@ -27,17 +27,17 @@
 #undef main
 int main(int argc, char* argv[]) {
 
-    try {
-        auto appDesc = ApplicationDesc{};
-        appDesc.Width = 1920;
-        appDesc.Height = 1280;
-        appDesc.Tittle = "Application VolumeRender <DX11>";
-        appDesc.IsFullScreen = false;
+	try {
+		auto appDesc = ApplicationDesc{};
+		appDesc.Width = 1280;
+		appDesc.Height = 720;
+		appDesc.Tittle = "Application VolumeRender <DX11>";
+		appDesc.IsFullScreen = false;
 
-        auto pAppication = std::make_unique<ApplicationVolumeRender>(appDesc);
-        pAppication->Run();
-    } catch (std::exception const& e) {
-        std::cout << e.what() << std::endl;
-        assert(0);
-    }
+		const auto pApplication = std::make_unique<ApplicationVolumeRender>(appDesc);
+		pApplication->Run();
+	} catch (std::exception const& e) {
+		std::cout << e.what() << std::endl;
+		assert(0);
+	}
 }

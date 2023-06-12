@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright(c) 2021 Mikhail Gorobets
+ * Copyright(c) 2021-2023 Mikhail Gorobets
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this softwareand associated documentation files(the "Software"), to deal
@@ -21,6 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
 #pragma once
 
 #include "Application.h"
@@ -28,40 +29,42 @@
 
 #include <Hawk/Components/Camera.hpp>
 #include <Hawk/Math/Functions.hpp>
-#include <Hawk/Math/Transform.hpp>
-#include <Hawk/Math/Converters.hpp>
 
 class ApplicationVolumeRender final : public Application {
 public:
+    using Base = Application;
+
     ApplicationVolumeRender(ApplicationDesc const& desc);
 private:
-    auto InitializeVolumeTexture() -> void;
+    void InitializeVolumeTexture();
 
-    auto InitializeTransferFunction() -> void;
+    void InitializeTransferFunction();
 
-    auto InitializeSamplerStates() -> void;
+    void InitializeSamplerStates();
 
-    auto InitializeShaders() -> void;
+    void InitializeShaders();
 
-    auto InitializeRenderTextures() -> void;
+    void InitializeRenderTextures();
 
-    auto InitializeBuffers() -> void;
+    void InitializeBuffers();
 
-    auto InitilizeTileBuffer() -> void;
+    void InitializeTileBuffer();
 
-    auto InitializeEnviromentMap() -> void;
+    void InitializeEnvironmentMap();
 
-    auto EventMouseWheel(float delta) -> void override;
+    void Resize(int32_t width, int32_t height) override;
 
-    auto EventMouseMove(float x, float y) -> void override;
+    void EventMouseWheel(float delta) override;
 
-    auto Update(float deltaTime) -> void override;
+    void EventMouseMove(float x, float y) override;
 
-    auto Blit(DX::ComPtr<ID3D11ShaderResourceView> pSrc, DX::ComPtr<ID3D11RenderTargetView> pDst) -> void;
+    void Update(float deltaTime) override;
 
-    auto RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRTV) -> void override;
+    void RenderFrame(DX::ComPtr<ID3D11RenderTargetView> pRTV) override;
 
-    auto RenderGUI(DX::ComPtr<ID3D11RenderTargetView> pRTV) -> void override;
+    void RenderGUI(DX::ComPtr<ID3D11RenderTargetView> pRTV) override;
+
+    void TextureBlit(DX::ComPtr<ID3D11ShaderResourceView> pSrc, DX::ComPtr<ID3D11RenderTargetView> pDst);
 
 private:
     using D3D11ArrayUnorderedAccessView = std::vector< DX::ComPtr<ID3D11UnorderedAccessView>>;
@@ -76,8 +79,8 @@ private:
     DX::ComPtr<ID3D11ShaderResourceView> m_pSRVDiffuseTF;
     DX::ComPtr<ID3D11ShaderResourceView> m_pSRVSpecularTF;
     DX::ComPtr<ID3D11ShaderResourceView> m_pSRVRoughnessTF;
-    DX::ComPtr<ID3D11ShaderResourceView> m_pSRVOpasityTF;
-    DX::ComPtr<ID3D11ShaderResourceView> m_pSRVEnviroment;
+    DX::ComPtr<ID3D11ShaderResourceView> m_pSRVOpacityTF;
+    DX::ComPtr<ID3D11ShaderResourceView> m_pSRVEnvironment;
 
     DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVRadiance;
     DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVRadiance;
@@ -119,7 +122,7 @@ private:
     DX::ComPtr<ID3D11SamplerState>  m_pSamplerAnisotropic;
 
     DX::ComPtr<ID3D11Buffer> m_pConstantBufferFrame;
-    DX::ComPtr<ID3D11Buffer> m_pDispathIndirectBufferArgs;
+    DX::ComPtr<ID3D11Buffer> m_pDispatchIndirectBufferArgs;
     DX::ComPtr<ID3D11Buffer> m_pDrawInstancedIndirectBufferArgs;
 
     ColorTransferFunction1D  m_DiffuseTransferFunc;
@@ -134,10 +137,10 @@ private:
     Hawk::Math::Vec3 m_BoundingBoxMax = Hawk::Math::Vec3(+0.5f, +0.5f, +0.5f);
 
     float    m_DeltaTime = 0.0f;
-    float    m_RotateSensivity = 0.25f;
-    float    m_ZoomSensivity = 1.5f;
+    float    m_RotateSensitivity = 0.25f;
+    float    m_ZoomSensitivity = 1.5f;
     float    m_Density = 100.0f;
-    float    m_Exposure = 20.0f;
+    float    m_Exposure = 12.0f;
     float    m_Zoom = 1.0f;
     uint32_t m_MipLevel = 0;
     uint32_t m_StepCount = 180;
@@ -146,8 +149,8 @@ private:
     uint32_t m_SamplingCount = 256;
 
     bool     m_IsReloadShader = false;
-    bool     m_IsReloadTranferFunc = false;
-    bool     m_IsDrawDegugTiles = false;
+    bool     m_IsReloadTransferFunc = false;
+    bool     m_IsDrawDebugTiles = false;
 
     uint16_t m_DimensionX = 0;
     uint16_t m_DimensionY = 0;

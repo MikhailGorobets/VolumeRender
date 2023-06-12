@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright(c) 2021 Mikhail Gorobets
+ * Copyright(c) 2021-2023 Mikhail Gorobets
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this softwareand associated documentation files(the "Software"), to deal
@@ -22,9 +22,14 @@
  * SOFTWARE.
  */
 
-AppendStructuredBuffer<uint> BufferTiles: register(u0);
+Texture2D<float4> TextureSrc : register(t0);
+SamplerState      SamplerPoint : register(s0);
 
-[numthreads(1, 1, 1)]
-void ResetTiles(uint3 groupID: SV_GroupID, uint lineID: SV_GroupIndex) {
-    BufferTiles.Append((0xFFFF & groupID.x) | ((0xFFFF & groupID.y) << 16));
+void BlitVS(uint id : SV_VertexID, out float4 position : SV_Position, out float2 texcoord : TEXCOORD) {
+    texcoord = float2((id << 1) & 2, id & 2);
+    position = float4(texcoord * float2(2, -2) + float2(-1, 1), 1, 1);
+}
+
+float4 BlitPS(float4 position : SV_Position, float2 texcoord : TEXCOORD) : SV_TARGET0 {
+    return TextureSrc.Sample(SamplerPoint, texcoord);
 }

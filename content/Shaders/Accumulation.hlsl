@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright(c) 2021 Mikhail Gorobets
+ * Copyright(c) 2021-2023 Mikhail Gorobets
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this softwareand associated documentation files(the "Software"), to deal
@@ -24,12 +24,13 @@
 
 #include "Common.hlsl"
 
-Texture2D<float3> TextureColorSRV: register(t0);
-StructuredBuffer<uint> BufferDispersionTiles: register(t1);
-RWTexture2D<float4> TextureColorSumUAV: register(u0);
+Texture2D<float3> TextureColorSRV : register(t0);
+StructuredBuffer<uint> BufferDispersionTiles : register(t1);
+RWTexture2D<float4> TextureColorSumUAV : register(u0);
 
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, 1)]
-void Accumulate(uint3 thredID: SV_GroupThreadID, uint3 groupID: SV_GroupID) {
+void Accumulate(uint3 thredID : SV_GroupThreadID, uint3 groupID : SV_GroupID)
+{
     uint2 id = GetThreadIDFromTileList(BufferDispersionTiles, groupID.x, thredID.xy);
     float alpha = 1.0f / (FrameBuffer.FrameIndex + 1.0f);
     TextureColorSumUAV[id] = lerp(TextureColorSumUAV[id], float4(TextureColorSRV[id].xyz, 1.0), float4(alpha, alpha, alpha, alpha));

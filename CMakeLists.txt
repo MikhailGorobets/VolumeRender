@@ -30,12 +30,16 @@ set(SOURCE
     source/Main.cpp
 )
 
+file(GLOB SHADERS "content/Shaders/*.hlsl")
+
 source_group("include" FILES ${INCLUDE})
 source_group("source" FILES  ${SOURCE})
+source_group("shaders" FILES  ${SHADERS})
 
-add_executable(VolumeRender ${INCLUDE} ${SOURCE})
+add_executable(VolumeRender ${INCLUDE} ${SOURCE} ${SHADERS})
 
 target_link_libraries(VolumeRender PRIVATE fmt glfw imgui implot nlohmann_json directx-tex d3d11.lib d3d12.lib dxgi.lib d3dcompiler.lib)
 target_include_directories(VolumeRender PRIVATE "include")
 
 set_target_properties(VolumeRender PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${PROJECT_DIRECTORY}")
+set_source_files_properties(${SHADERS} PROPERTIES VS_TOOL_OVERRIDE "None")
