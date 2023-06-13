@@ -49,16 +49,16 @@ float ReductionSum(uint lineID)
     return SharedBuffer[0];
 }
 
-float ComputeSum(uint3 thredID, uint lineID, Texture2D<float3> sourceTexture)
+float ComputeSum(uint3 threadID, uint lineID, Texture2D<float3> sourceTexture)
 {
-    SharedBuffer[lineID] = Luminance(sourceTexture[thredID.xy]);
+    SharedBuffer[lineID] = Luminance(sourceTexture[threadID.xy]);
     GroupMemoryBarrierWithGroupSync();
     return ReductionSum(lineID);
 }
 
-float ComputeSum(uint3 thredID, uint lineID, Texture2D<float> sourceTexture)
+float ComputeSum(uint3 threadID, uint lineID, Texture2D<float> sourceTexture)
 {
-    SharedBuffer[lineID] = sourceTexture[thredID.xy];
+    SharedBuffer[lineID] = sourceTexture[threadID.xy];
     GroupMemoryBarrierWithGroupSync();
     return ReductionSum(lineID);
 }
@@ -69,14 +69,13 @@ void ResetTiles(uint3 groupID : SV_GroupID, uint lineID : SV_GroupIndex)
     BufferTiles.Append((0xFFFF & groupID.x) | ((0xFFFF & groupID.y) << 16));
 }
 
-
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, 1)]
-void ComputeTiles(uint3 thredID : SV_DispatchThreadID, uint lineID : SV_GroupIndex, uint3 groupID : SV_GroupID)
+void ComputeTiles(uint3 threadID : SV_DispatchThreadID, uint lineID : SV_GroupIndex, uint3 groupID : SV_GroupID)
 {
     const uint tileID = (0xFFFF & groupID.x) | ((0xFFFF & groupID.y) << 16);
        
-    float colorSum = 0.75 * ComputeSum(thredID, lineID, TextureColorSRV);
-    float depthSum = 0.25 * ComputeSum(thredID, lineID, TextureDepthSRV);
+    float colorSum = 0.75 * ComputeSum(threadID, lineID, TextureColorSRV);
+    float depthSum = 0.25 * ComputeSum(threadID, lineID, TextureDepthSRV);
     float totalSum = colorSum + depthSum;
      
     if (totalSum > 0 && lineID == 0)

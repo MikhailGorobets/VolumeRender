@@ -29,9 +29,9 @@ StructuredBuffer<uint> BufferDispersionTiles : register(t1);
 RWTexture2D<float4> TextureColorSumUAV : register(u0);
 
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, 1)]
-void Accumulate(uint3 thredID : SV_GroupThreadID, uint3 groupID : SV_GroupID)
+void Accumulate(uint3 threadID : SV_GroupThreadID, uint3 groupID : SV_GroupID)
 {
-    uint2 id = GetThreadIDFromTileList(BufferDispersionTiles, groupID.x, thredID.xy);
+    uint2 id = GetThreadIDFromTileList(BufferDispersionTiles, groupID.x, threadID.xy);
     float alpha = 1.0f / (FrameBuffer.FrameIndex + 1.0f);
     TextureColorSumUAV[id] = lerp(TextureColorSumUAV[id], float4(TextureColorSRV[id].xyz, 1.0), float4(alpha, alpha, alpha, alpha));
 }

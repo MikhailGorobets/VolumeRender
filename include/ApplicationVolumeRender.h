@@ -68,7 +68,7 @@ private:
 
 private:
     using D3D11ArrayUnorderedAccessView = std::vector< DX::ComPtr<ID3D11UnorderedAccessView>>;
-    using D3D11ArrayShadeResourceView   = std::vector< DX::ComPtr<ID3D11ShaderResourceView>>;
+    using D3D11ArrayShadeResourceView = std::vector< DX::ComPtr<ID3D11ShaderResourceView>>;
 
     D3D11ArrayShadeResourceView   m_pSRVVolumeIntensity;
     D3D11ArrayUnorderedAccessView m_pUAVVolumeIntensity;
@@ -84,7 +84,7 @@ private:
 
     DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVRadiance;
     DX::ComPtr<ID3D11UnorderedAccessView> m_pUAVRadiance;
-    
+
     DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVDiffuse;
     DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVSpecular;
     DX::ComPtr<ID3D11ShaderResourceView>  m_pSRVNormal;

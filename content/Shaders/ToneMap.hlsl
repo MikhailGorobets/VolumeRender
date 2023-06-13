@@ -61,9 +61,9 @@ float3 LinearToSRGB(float3 color)
 }
 
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, 1)]
-void ToneMap(uint3 thredID : SV_GroupThreadID, uint3 groupID : SV_GroupID)
+void ToneMap(uint3 threadID : SV_GroupThreadID, uint3 groupID : SV_GroupID)
 {
-    uint2 id = GetThreadIDFromTileList(BufferDispersionTiles, groupID.x, thredID.xy);
+    uint2 id = GetThreadIDFromTileList(BufferDispersionTiles, groupID.x, threadID.xy);
     float3 colorHDR = TextureHDR.Load(int3(id.xy, 0)).xyz;
     TextureLDR[id] = float4(ToneMapUncharted2Function(colorHDR, FrameBuffer.Exposure), 1.0f);
 }

@@ -159,9 +159,9 @@ bool RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng)
 }
 
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, 1)]
-void ComputeRadiance(uint3 thredID : SV_GroupThreadID, uint3 groupID : SV_GroupID)
+void ComputeRadiance(uint3 threadID : SV_GroupThreadID, uint3 groupID : SV_GroupID)
 {
-    uint2 id = GetThreadIDFromTileList(BufferDispersionTiles, groupID.x, thredID.xy);
+    uint2 id = GetThreadIDFromTileList(BufferDispersionTiles, groupID.x, threadID.xy);
     CRNG rng = InitCRND(id, FrameBuffer.FrameIndex);
     GBuffer buffer = LoadGBuffer(id, FrameBuffer.FrameOffset, FrameBuffer.InvRenderTargetDim, FrameBuffer.InvWorldViewProjectionMatrix);
 
@@ -201,7 +201,7 @@ void ComputeRadiance(uint3 thredID : SV_GroupThreadID, uint3 groupID : SV_GroupI
             const float G = GGX_PartialGeometry(NdotV, alpha) * GGX_PartialGeometry(NdotL, alpha);
             ray.Origin = buffer.Position;
             ray.Direction = L;
-            throughput += (G * F * VdotH) / (NdotV * NdotH + M_EPSILON) / (pdf);
+            throughput += (G * F * VdotH) * rcp(max(NdotV * NdotH, 1e-6)) / (pdf);
         }
         else
         {
