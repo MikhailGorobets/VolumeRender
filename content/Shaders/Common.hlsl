@@ -108,6 +108,20 @@ float Med3(float a, float b, float c)
     return clamp(a, min(b, c), max(b, c));
 }
 
+float2 EncodeNormal(float3 normal)
+{
+    float2 packed = normal.xy * (1.f / (abs(normal.x) + abs(normal.y) + abs(normal.z)));
+    packed = (normal.z < 0.f) ? (1.f - abs(packed.yx)) * (packed.xy >= 0.f ? 1.f : -1.f) : packed;
+    return packed;
+}
+
+float3 DecodeNormal(float2 packed)
+{
+    float3 normal = float3(packed.xy, 1.0 - abs(packed.x) - abs(packed.y));
+    normal.xy = (normal.z < 0.0) ? (1.f - abs(normal.yx)) * (normal.xy >= 0.f ? 1.f : -1.f) : normal.xy;
+    return normalize(normal);
+}
+
 float2 ScreenSpaceToNDC(float2 pixel, float2 invDimension)
 {
     float2 ndc = 2.0f * (pixel.xy + 0.5) * invDimension - 1.0f;

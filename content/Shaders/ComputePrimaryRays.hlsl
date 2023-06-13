@@ -58,7 +58,6 @@ SamplerState SamplerPoint : register(s0);
 SamplerState SamplerLinear : register(s1);
 SamplerState SamplerAnisotropic : register(s2);
 
-
 float GetIntensity(VolumeDesc desc, float3 position)
 {
     return TextureVolumeIntensity.SampleLevel(SamplerLinear, GetNormalizedTexcoord(position, desc.BoundingBox), 0);
@@ -88,7 +87,6 @@ float GetRoughness(VolumeDesc desc, float3 position)
 {
     return TextureTransferFunctionRoughness.SampleLevel(SamplerLinear, GetIntensity(desc, position), 0);
 }
-
 
 ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng)
 {
@@ -149,9 +147,9 @@ ScatterEvent RayMarching(Ray ray, VolumeDesc desc, inout CRNG rng)
 }
 
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, 1)]
-void GenerateRays(uint3 thredID : SV_GroupThreadID, uint3 groupID : SV_GroupID)
+void GenerateRays(uint3 threadID : SV_GroupThreadID, uint3 groupID : SV_GroupID)
 {
-    uint2 id = GetThreadIDFromTileList(BufferDispersionTiles, groupID.x, thredID.xy);
+    uint2 id = GetThreadIDFromTileList(BufferDispersionTiles, groupID.x, threadID.xy);
     
     CRNG rng = InitCRND(id, FrameBuffer.FrameIndex);
     Ray ray = CreateCameraRay(id, FrameBuffer.FrameOffset, FrameBuffer.InvRenderTargetDim, FrameBuffer.InvWorldViewProjectionMatrix);

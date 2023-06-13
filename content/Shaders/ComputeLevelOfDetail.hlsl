@@ -35,7 +35,7 @@ float Mip(uint3 position)
 }
 
 [numthreads(4, 4, 4)]
-void GenerateMipLevel(uint3 thredID : SV_DispatchThreadID, uint lineID : SV_GroupIndex)
+void GenerateMipLevel(uint3 threadID : SV_DispatchThreadID, uint lineID : SV_GroupIndex)
 {
-    TextureDst[thredID] = Mip(thredID);
+    TextureDst[threadID] = Mip(threadID);
 }

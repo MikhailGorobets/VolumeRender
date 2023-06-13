@@ -116,8 +116,8 @@ float3 Gradient(uint3 location)
 }
 
 [numthreads(4, 4, 4)]
-void ComputeGradient(uint3 thredID : SV_DispatchThreadID, uint lineID : SV_GroupIndex)
+void ComputeGradient(uint3 threadID : SV_DispatchThreadID, uint lineID : SV_GroupIndex)
 {
-    float3 gradient = Gradient(thredID);
-    TextureDst[thredID] = float4(gradient, 0); //float4(length(gradient) < FLT_MIN ? float3(0.0f, 0.0f, 0.0f) : normalize(gradient), length(gradient));
+    float3 gradient = Gradient(threadID);
+    TextureDst[threadID] = float4(gradient, 0); //float4(length(gradient) < FLT_MIN ? float3(0.0f, 0.0f, 0.0f) : normalize(gradient), length(gradient));
 }

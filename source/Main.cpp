@@ -27,17 +27,17 @@
 #undef main
 int main(int argc, char* argv[]) {
 
-	try {
-		auto appDesc = ApplicationDesc{};
-		appDesc.Width = 1280;
-		appDesc.Height = 720;
-		appDesc.Tittle = "Application VolumeRender <DX11>";
-		appDesc.IsFullScreen = false;
+    try {
+        auto appDesc = ApplicationDesc{};
+        appDesc.Width = 1280;
+        appDesc.Height = 720;
+        appDesc.Tittle = "Application VolumeRender <DX11>";
+        appDesc.IsFullScreen = false;
 
-		const auto pApplication = std::make_unique<ApplicationVolumeRender>(appDesc);
-		pApplication->Run();
-	} catch (std::exception const& e) {
-		std::cout << e.what() << std::endl;
-		assert(0);
-	}
+        const auto pApplication = std::make_unique<ApplicationVolumeRender>(appDesc);
+        pApplication->Run();
+    } catch (std::exception const& e) {
+        std::cout << e.what() << std::endl;
+        assert(0);
+    }
 }
