@@ -53,6 +53,9 @@ Application::~Application() {
 
 void Application::Resize(int32_t width, int32_t height)
 {
+    if (width == 0 || width == 0)
+        return;
+
     m_pImmediateContext->OMSetRenderTargets(0, nullptr, nullptr);
 
     for (uint32_t frameID = 0; frameID < FrameCount; frameID++) {
